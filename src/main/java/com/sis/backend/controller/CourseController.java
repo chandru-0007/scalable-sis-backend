@@ -22,13 +22,23 @@ public class CourseController {
     }
 
     /**
-     * Get all courses (served from Redis Key-Value Cache).
+     * Get all courses (served from Redis Key-Value Cache, supports optional department filter).
      * GET /api/courses
+     * GET /api/courses?department=CSE
      */
     @GetMapping("/courses")
-    public ResponseEntity<Map<String, Object>> getAllCourses() {
+    public ResponseEntity<Map<String, Object>> getAllCourses(
+            @RequestParam(required = false) String department) {
+
         long start = System.currentTimeMillis();
         List<Course> courses = courseService.getAllCourses();
+
+        if (department != null && !department.isBlank()) {
+            courses = courses.stream()
+                    .filter(c -> department.equalsIgnoreCase(c.getDepartment()))
+                    .toList();
+        }
+
         long duration = System.currentTimeMillis() - start;
 
         Map<String, Object> response = new HashMap<>();

@@ -7,6 +7,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.List;
 
 @SpringBootApplication
 public class SisBackendApplication {
@@ -19,11 +20,26 @@ public class SisBackendApplication {
     /**
      * Automatically loads key=value pairs from .env into System Properties
      * so application.yml resolves ${VAR} seamlessly without modifying YAML.
+     * Searches multiple directory locations for maximum flexibility.
      */
     private static void loadDotEnv() {
-        File envFile = new File(".env");
-        if (envFile.exists()) {
-            try (BufferedReader reader = new BufferedReader(new FileReader(envFile))) {
+        List<File> candidateFiles = List.of(
+                new File(".env"),
+                new File("sis-backend/.env"),
+                new File(System.getProperty("user.dir"), ".env"),
+                new File(System.getProperty("user.dir"), "sis-backend/.env")
+        );
+
+        File resolvedFile = null;
+        for (File candidate : candidateFiles) {
+            if (candidate.exists() && candidate.isFile()) {
+                resolvedFile = candidate;
+                break;
+            }
+        }
+
+        if (resolvedFile != null) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(resolvedFile))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     line = line.trim();
@@ -34,7 +50,7 @@ public class SisBackendApplication {
                     String key = line.substring(0, eqIdx).trim();
                     String value = line.substring(eqIdx + 1).trim();
 
-                    // Strip optional quotes
+                    // Strip optional enclosing quotes
                     if ((value.startsWith("\"") && value.endsWith("\"")) ||
                         (value.startsWith("'") && value.endsWith("'"))) {
                         value = value.substring(1, value.length() - 1);
@@ -45,7 +61,7 @@ public class SisBackendApplication {
                     }
                 }
             } catch (IOException e) {
-                System.err.println("Warning: Could not read .env file: " + e.getMessage());
+                System.err.println("Warning: Could not read .env file from " + resolvedFile.getAbsolutePath() + ": " + e.getMessage());
             }
         }
     }
