@@ -34,6 +34,11 @@ public class AcademicNotice implements Serializable {
         this.scrapedAt = scrapedAt;
     }
 
+    public AcademicNotice(String id, String title, String content, String category,
+                          String sourceUrl, long scrapedAt, String shortUrl) {
+        this(id, title, category, content, sourceUrl, java.time.LocalDate.now().toString(), shortUrl, scrapedAt);
+    }
+
     public String getId() {
         return id;
     }
@@ -96,5 +101,9 @@ public class AcademicNotice implements Serializable {
 
     public void setScrapedAt(long scrapedAt) {
         this.scrapedAt = scrapedAt;
+    }
+
+    public long getCreatedAt() {
+        return scrapedAt;
     }
 }

@@ -28,17 +28,13 @@ public class CourseController {
      */
     @GetMapping("/courses")
     public ResponseEntity<Map<String, Object>> getAllCourses(
-            @RequestParam(required = false) String department) {
+            @RequestParam(required = false) String department,
+            @RequestParam(required = false) Integer semester,
+            @RequestParam(required = false) String academicYear,
+            @RequestParam(required = false) String status) {
 
         long start = System.currentTimeMillis();
-        List<Course> courses = courseService.getAllCourses();
-
-        if (department != null && !department.isBlank()) {
-            courses = courses.stream()
-                    .filter(c -> department.equalsIgnoreCase(c.getDepartment()))
-                    .toList();
-        }
-
+        List<Course> courses = courseService.getFilteredCourses(department, semester, academicYear, status);
         long duration = System.currentTimeMillis() - start;
 
         Map<String, Object> response = new HashMap<>();

@@ -43,8 +43,36 @@ public class AuthController {
         this.passwordEncoder = passwordEncoder;
     }
 
+    @jakarta.annotation.PostConstruct
+    public void seedDemoUsers() {
+        if (!studentRepository.existsByEmail("chandru@college.edu") && !studentRepository.existsByRollNumber("22CS014")) {
+            String id = snowflakeIdGenerator.nextIdStr();
+            studentRepository.save(new Student(
+                    id, "22CS014", "Chandru S", "chandru@college.edu",
+                    passwordEncoder.encode("Chandru@123"), "CSE", 5, "STUDENT",
+                    consistentHashRing.getShard(id), System.currentTimeMillis()
+            ));
+        }
+        if (!studentRepository.existsByEmail("ramanathan@college.edu") && !studentRepository.existsByRollNumber("FAC001")) {
+            String id = snowflakeIdGenerator.nextIdStr();
+            studentRepository.save(new Student(
+                    id, "FAC001", "Dr. A. Ramanathan", "ramanathan@college.edu",
+                    passwordEncoder.encode("Faculty@123"), "CSE", 0, "FACULTY",
+                    consistentHashRing.getShard(id), System.currentTimeMillis()
+            ));
+        }
+        if (!studentRepository.existsByEmail("admin@college.edu") && !studentRepository.existsByRollNumber("ADM001")) {
+            String id = snowflakeIdGenerator.nextIdStr();
+            studentRepository.save(new Student(
+                    id, "ADM001", "Dr. K. Swaminathan (Registrar)", "admin@college.edu",
+                    passwordEncoder.encode("Admin@123"), "ADMIN", 0, "ADMIN",
+                    consistentHashRing.getShard(id), System.currentTimeMillis()
+            ));
+        }
+    }
+
     /**
-     * Student Registration (Signup)
+     * User Registration (Signup)
      * POST /api/auth/register
      */
     @PostMapping("/register")
@@ -64,13 +92,13 @@ public class AuthController {
         // 2. Uniqueness check
         if (studentRepository.existsByEmail(request.getEmail().trim().toLowerCase())) {
             response.put("status", "ERROR");
-            response.put("message", "A student with this email already exists.");
+            response.put("message", "A user with this email already exists.");
             return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
         }
 
         if (studentRepository.existsByRollNumber(request.getRollNumber().trim())) {
             response.put("status", "ERROR");
-            response.put("message", "A student with this roll number already exists.");
+            response.put("message", "A user with this roll number/ID already exists.");
             return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
         }
 
@@ -83,6 +111,9 @@ public class AuthController {
         // 5. BCrypt Password Hashing
         String passwordHash = passwordEncoder.encode(request.getPassword());
 
+        String role = (request.getRole() != null && !request.getRole().isBlank()) 
+                ? request.getRole().trim().toUpperCase() : "STUDENT";
+
         // 6. Save to Database
         Student student = new Student(
                 studentId,
@@ -92,6 +123,7 @@ public class AuthController {
                 passwordHash,
                 request.getDepartment() != null ? request.getDepartment().trim() : "CSE",
                 request.getSemester() > 0 ? request.getSemester() : 1,
+                role,
                 targetShard,
                 System.currentTimeMillis()
         );
@@ -102,7 +134,7 @@ public class AuthController {
         String token = authSessionService.createSession(saved);
 
         response.put("status", "SUCCESS");
-        response.put("message", "Student registered successfully");
+        response.put("message", "User registered successfully");
         response.put("token", token);
 
         Map<String, Object> profile = new HashMap<>();
@@ -112,6 +144,7 @@ public class AuthController {
         profile.put("rollNumber", saved.getRollNumber());
         profile.put("department", saved.getDepartment());
         profile.put("semester", saved.getSemester());
+        profile.put("role", saved.getRole());
         profile.put("assignedShard", saved.getTargetShard());
 
         response.put("student", profile);
@@ -120,7 +153,7 @@ public class AuthController {
     }
 
     /**
-     * Student Authentication (Login)
+     * User Authentication (Login)
      * POST /api/auth/login
      */
     @PostMapping("/login")
@@ -143,7 +176,7 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(response);
         }
 
-        // 2. Fetch student from database
+        // 2. Fetch user from database
         Optional<Student> studentOpt = studentRepository.findByEmail(email);
         if (studentOpt.isEmpty()) {
             response.put("status", "ERROR");
@@ -174,6 +207,7 @@ public class AuthController {
         profile.put("rollNumber", student.getRollNumber());
         profile.put("department", student.getDepartment());
         profile.put("semester", student.getSemester());
+        profile.put("role", student.getRole());
         profile.put("assignedShard", student.getTargetShard());
 
         response.put("student", profile);

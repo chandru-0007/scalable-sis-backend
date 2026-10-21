@@ -40,6 +40,7 @@ public class AuthSessionService {
         sessionData.put("rollNumber", student.getRollNumber());
         sessionData.put("department", student.getDepartment());
         sessionData.put("semester", String.valueOf(student.getSemester()));
+        sessionData.put("role", student.getRole() != null ? student.getRole() : "STUDENT");
         sessionData.put("targetShard", student.getTargetShard());
 
         try {

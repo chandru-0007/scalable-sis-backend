@@ -72,14 +72,33 @@ public class EnrollmentService {
         Course course = courseRepository.findByCode(code)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found with code: " + code));
 
-        // 4. Seat capacity check
+        // 4. Course lifecycle status check (must be ACTIVE or UPCOMING)
+        if (course.getStatus() != null && ("COMPLETED".equalsIgnoreCase(course.getStatus()) || "CANCELLED".equalsIgnoreCase(course.getStatus()))) {
+            throw new IllegalStateException("Course " + code + " is " + course.getStatus() + " and not accepting new registrations.");
+        }
+
+        // 5. Seat capacity check
         if (course.getEnrolled() >= course.getCapacity()) {
             throw new IllegalStateException("Course " + code + " has reached maximum capacity (" + course.getCapacity() + " seats).");
         }
 
-        // 5. Duplicate enrollment check
+        // 6. Duplicate enrollment check
         if (enrollmentRepository.existsByStudentIdAndCourseCode(studentId, code)) {
             throw new IllegalStateException("Student is already enrolled in " + code);
+        }
+
+        // 7. Student Timetable Schedule Collision Check (Prevent double-booking)
+        if (course.getSchedule() != null && !course.getSchedule().isBlank()) {
+            List<Enrollment> existingEnrollments = enrollmentRepository.findByStudentId(studentId);
+            for (Enrollment existing : existingEnrollments) {
+                Optional<Course> existingCourseOpt = courseRepository.findByCode(existing.getCourseCode());
+                if (existingCourseOpt.isPresent()) {
+                    Course existingCourse = existingCourseOpt.get();
+                    if (isScheduleCollision(course.getSchedule(), existingCourse.getSchedule())) {
+                        throw new IllegalStateException("Schedule Collision: Cannot register for " + code + " (" + course.getSchedule() + ") because you have an existing class in " + existingCourse.getCode() + " at " + existingCourse.getSchedule());
+                    }
+                }
+            }
         }
 
         // 6. Generate 64-bit Snowflake ID & assign Consistent Hash Shard
@@ -191,5 +210,20 @@ public class EnrollmentService {
         Enrollment updated = enrollmentRepository.save(enrollment);
         keyValueCacheService.evict(TIMETABLE_CACHE_PREFIX + enrollment.getStudentId());
         return updated;
+    }
+
+    private boolean isScheduleCollision(String sched1, String sched2) {
+        if (sched1 == null || sched2 == null) return false;
+        String s1 = sched1.toLowerCase().trim();
+        String s2 = sched2.toLowerCase().trim();
+        if (s1.equals(s2)) return true;
+
+        String[] days = {"mon", "tue", "wed", "thu", "fri", "sat"};
+        for (String d : days) {
+            if (s1.contains(d) && s2.contains(d)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -14,5 +14,7 @@ public interface CourseRepository extends MongoRepository<Course, String> {
 
     List<Course> findByDepartment(String department);
 
+    List<Course> findByDepartmentIgnoreCase(String department);
+
     boolean existsByCode(String code);
 }

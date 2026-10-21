@@ -37,16 +37,20 @@ public class HealthController {
         // Check MongoDB
         try {
             mongoTemplate.getDb().runCommand(new org.bson.Document("ping", 1));
+            String mongoUri = System.getProperty("MONGO_URI", "local");
             status.put("mongodb", "UP");
+            status.put("mongodbProvider", mongoUri.contains("mongodb.net") ? "MongoDB Atlas Cloud Cluster" : "Local MongoDB");
         } catch (Exception e) {
             status.put("mongodb", "DOWN - " + e.getMessage());
         }
 
-        // Check Redis / Memurai
+        // Check Redis (Upstash Cloud Redis or Local Memurai)
         try {
             String pong = redisTemplate.getConnectionFactory()
                     .getConnection().ping();
+            String redisHost = System.getProperty("REDIS_HOST", "localhost");
             status.put("redis", "UP - " + pong);
+            status.put("redisProvider", redisHost.contains("upstash") ? "Upstash Cloud Redis (" + redisHost + ")" : "Local Redis / Memurai (" + redisHost + ")");
         } catch (Exception e) {
             status.put("redis", "DOWN - " + e.getMessage());
         }

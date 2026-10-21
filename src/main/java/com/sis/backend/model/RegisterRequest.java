@@ -8,18 +8,25 @@ public class RegisterRequest {
     private String rollNumber;
     private String department;
     private int semester;
+    private String role; // "STUDENT", "FACULTY", "ADMIN", "PARENT"
 
     public RegisterRequest() {
     }
 
     public RegisterRequest(String name, String email, String password, String rollNumber,
                            String department, int semester) {
+        this(name, email, password, rollNumber, department, semester, "STUDENT");
+    }
+
+    public RegisterRequest(String name, String email, String password, String rollNumber,
+                           String department, int semester, String role) {
         this.name = name;
         this.email = email;
         this.password = password;
         this.rollNumber = rollNumber;
         this.department = department;
         this.semester = semester;
+        this.role = role;
     }
 
     public String getName() {
@@ -68,5 +75,13 @@ public class RegisterRequest {
 
     public void setSemester(int semester) {
         this.semester = semester;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 }

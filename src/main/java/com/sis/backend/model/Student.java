@@ -28,6 +28,8 @@ public class Student {
 
     private int semester;
 
+    private String role = "STUDENT"; // Default "STUDENT", can be "FACULTY", "ADMIN", "PARENT"
+
     private String targetShard; // Logical partition assigned via Consistent Hashing
 
     private long createdAt;
@@ -37,6 +39,11 @@ public class Student {
 
     public Student(String id, String rollNumber, String name, String email, String passwordHash,
                    String department, int semester, String targetShard, long createdAt) {
+        this(id, rollNumber, name, email, passwordHash, department, semester, "STUDENT", targetShard, createdAt);
+    }
+
+    public Student(String id, String rollNumber, String name, String email, String passwordHash,
+                   String department, int semester, String role, String targetShard, long createdAt) {
         this.id = id;
         this.rollNumber = rollNumber;
         this.name = name;
@@ -44,6 +51,7 @@ public class Student {
         this.passwordHash = passwordHash;
         this.department = department;
         this.semester = semester;
+        this.role = (role != null && !role.isBlank()) ? role.toUpperCase() : "STUDENT";
         this.targetShard = targetShard;
         this.createdAt = createdAt;
     }
@@ -110,6 +118,14 @@ public class Student {
 
     public void setTargetShard(String targetShard) {
         this.targetShard = targetShard;
+    }
+
+    public String getRole() {
+        return role != null ? role : "STUDENT";
+    }
+
+    public void setRole(String role) {
+        this.role = (role != null && !role.isBlank()) ? role.toUpperCase() : "STUDENT";
     }
 
     public long getCreatedAt() {
