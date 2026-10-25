@@ -32,6 +32,8 @@ public class Student {
 
     private String targetShard; // Logical partition assigned via Consistent Hashing
 
+    private String profilePicture; // Profile picture URL or Base64 data URL
+
     private long createdAt;
 
     public Student() {
@@ -54,6 +56,14 @@ public class Student {
         this.role = (role != null && !role.isBlank()) ? role.toUpperCase() : "STUDENT";
         this.targetShard = targetShard;
         this.createdAt = createdAt;
+    }
+
+    public String getProfilePicture() {
+        return profilePicture;
+    }
+
+    public void setProfilePicture(String profilePicture) {
+        this.profilePicture = profilePicture;
     }
 
     public String getId() {

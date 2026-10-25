@@ -34,6 +34,7 @@ public class EnrollmentService {
     private final RateLimiterService rateLimiterService;
     private final KeyValueCacheService keyValueCacheService;
     private final com.sis.backend.core.realtime.RealtimeEventService realtimeEventService;
+    private final com.sis.backend.core.sharding.MongoShardRouter mongoShardRouter;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public EnrollmentService(EnrollmentRepository enrollmentRepository,
@@ -43,7 +44,8 @@ public class EnrollmentService {
                              ConsistentHashRing consistentHashRing,
                              RateLimiterService rateLimiterService,
                              KeyValueCacheService keyValueCacheService,
-                             com.sis.backend.core.realtime.RealtimeEventService realtimeEventService) {
+                             com.sis.backend.core.realtime.RealtimeEventService realtimeEventService,
+                             com.sis.backend.core.sharding.MongoShardRouter mongoShardRouter) {
         this.enrollmentRepository = enrollmentRepository;
         this.courseRepository = courseRepository;
         this.studentRepository = studentRepository;
@@ -52,6 +54,22 @@ public class EnrollmentService {
         this.rateLimiterService = rateLimiterService;
         this.keyValueCacheService = keyValueCacheService;
         this.realtimeEventService = realtimeEventService;
+        this.mongoShardRouter = mongoShardRouter;
+    }
+
+    public Optional<Student> resolveStudent(String identifier) {
+        if (identifier == null || identifier.isBlank()) return Optional.empty();
+        String clean = identifier.trim();
+        Optional<Student> opt = studentRepository.findById(clean);
+        if (opt.isPresent()) return opt;
+        opt = studentRepository.findByRollNumber(clean);
+        if (opt.isPresent()) return opt;
+        opt = studentRepository.findByEmail(clean.toLowerCase());
+        if (opt.isPresent()) return opt;
+        if (mongoShardRouter != null) {
+            opt = mongoShardRouter.findStudent(clean);
+        }
+        return opt;
     }
 
     /**
@@ -65,10 +83,12 @@ public class EnrollmentService {
         }
 
         // 2. Student check
-        Optional<Student> studentOpt = studentRepository.findById(studentId);
+        Optional<Student> studentOpt = resolveStudent(studentId);
         if (studentOpt.isEmpty()) {
-            throw new IllegalArgumentException("Student not found with ID: " + studentId);
+            throw new IllegalArgumentException("Student not found with ID / Roll Number: " + studentId);
         }
+        Student student = studentOpt.get();
+        String canonicalStudentId = student.getId();
 
         // 3. Course check
         String code = courseCode.trim().toUpperCase();
@@ -86,13 +106,14 @@ public class EnrollmentService {
         }
 
         // 6. Duplicate enrollment check
-        if (enrollmentRepository.existsByStudentIdAndCourseCode(studentId, code)) {
+        if (enrollmentRepository.existsByStudentIdAndCourseCode(canonicalStudentId, code) ||
+            enrollmentRepository.existsByStudentIdAndCourseCode(studentId, code)) {
             throw new IllegalStateException("Student is already enrolled in " + code);
         }
 
         // 7. Student Timetable Schedule Collision Check (Prevent double-booking)
         if (course.getSchedule() != null && !course.getSchedule().isBlank()) {
-            List<Enrollment> existingEnrollments = enrollmentRepository.findByStudentId(studentId);
+            List<Enrollment> existingEnrollments = getStudentEnrollments(canonicalStudentId);
             for (Enrollment existing : existingEnrollments) {
                 Optional<Course> existingCourseOpt = courseRepository.findByCode(existing.getCourseCode());
                 if (existingCourseOpt.isPresent()) {
@@ -106,11 +127,11 @@ public class EnrollmentService {
 
         // 6. Generate 64-bit Snowflake ID & assign Consistent Hash Shard
         String enrollmentId = snowflakeIdGenerator.nextIdStr();
-        String targetShard = consistentHashRing.getShard(studentId);
+        String targetShard = consistentHashRing.getShard(canonicalStudentId);
 
         Enrollment enrollment = new Enrollment(
                 enrollmentId,
-                studentId,
+                canonicalStudentId,
                 code,
                 course.getTitle(),
                 "In Progress",
@@ -129,21 +150,53 @@ public class EnrollmentService {
         courseRepository.save(course);
 
         // 8. Invalidate timetable cache
+        keyValueCacheService.evict(TIMETABLE_CACHE_PREFIX + canonicalStudentId);
         keyValueCacheService.evict(TIMETABLE_CACHE_PREFIX + studentId);
         keyValueCacheService.evict("cache:courses:all");
 
         // 9. Real-Time Broadcast: Broadcast live enrollment & updated seat counter
         int seatsLeft = Math.max(0, course.getCapacity() - course.getEnrolled());
-        realtimeEventService.emitEnrollment(studentId, code, course.getTitle(), targetShard, seatsLeft);
+        realtimeEventService.emitEnrollment(canonicalStudentId, code, course.getTitle(), targetShard, seatsLeft);
 
         return saved;
+    }
+
+    /**
+     * Unenroll/Drop a course.
+     */
+    public boolean unenroll(String studentId, String courseCode) {
+        Optional<Student> studentOpt = resolveStudent(studentId);
+        String canonicalStudentId = studentOpt.map(Student::getId).orElse(studentId);
+        String code = courseCode.trim().toUpperCase();
+
+        Optional<Enrollment> opt = enrollmentRepository.findByStudentIdAndCourseCode(canonicalStudentId, code);
+        if (opt.isEmpty()) {
+            opt = enrollmentRepository.findByStudentIdAndCourseCode(studentId, code);
+        }
+        if (opt.isPresent()) {
+            Enrollment e = opt.get();
+            enrollmentRepository.delete(e);
+            Optional<Course> cOpt = courseRepository.findByCode(code);
+            if (cOpt.isPresent()) {
+                Course c = cOpt.get();
+                c.setEnrolled(Math.max(0, c.getEnrolled() - 1));
+                courseRepository.save(c);
+            }
+            keyValueCacheService.evict(TIMETABLE_CACHE_PREFIX + canonicalStudentId);
+            keyValueCacheService.evict(TIMETABLE_CACHE_PREFIX + studentId);
+            keyValueCacheService.evict("cache:courses:all");
+            return true;
+        }
+        return false;
     }
 
     /**
      * Get student timetable with Redis Key-Value Store caching.
      */
     public List<TimetableEntry> getStudentTimetable(String studentId) {
-        String cacheKey = TIMETABLE_CACHE_PREFIX + studentId;
+        Optional<Student> studentOpt = resolveStudent(studentId);
+        String canonicalStudentId = studentOpt.map(Student::getId).orElse(studentId);
+        String cacheKey = TIMETABLE_CACHE_PREFIX + canonicalStudentId;
 
         // 1. Check Redis cache first
         String cachedJson = keyValueCacheService.get(cacheKey);
@@ -155,7 +208,7 @@ public class EnrollmentService {
         }
 
         // 2. Cache miss: Compute timetable from enrolled courses
-        List<Enrollment> enrollments = enrollmentRepository.findByStudentId(studentId);
+        List<Enrollment> enrollments = getStudentEnrollments(canonicalStudentId);
         List<TimetableEntry> timetable = new ArrayList<>();
 
         for (Enrollment enrollment : enrollments) {
@@ -186,7 +239,13 @@ public class EnrollmentService {
     }
 
     public List<Enrollment> getStudentEnrollments(String studentId) {
-        return enrollmentRepository.findByStudentId(studentId);
+        Optional<Student> studentOpt = resolveStudent(studentId);
+        String canonicalStudentId = studentOpt.map(Student::getId).orElse(studentId);
+        List<Enrollment> list = enrollmentRepository.findByStudentId(canonicalStudentId);
+        if (list.isEmpty() && !canonicalStudentId.equals(studentId)) {
+            list = enrollmentRepository.findByStudentId(studentId);
+        }
+        return list;
     }
 
     public Enrollment updateGrade(String enrollmentId, String grade, double gradePoint) {

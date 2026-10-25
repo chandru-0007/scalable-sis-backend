@@ -56,6 +56,28 @@ public class EnrollmentController {
     }
 
     /**
+     * Drop/Unenroll from a course.
+     * DELETE /api/courses/enroll
+     */
+    @DeleteMapping("/courses/enroll")
+    public ResponseEntity<Map<String, Object>> unenroll(@RequestBody Map<String, String> request) {
+        Map<String, Object> response = new HashMap<>();
+        String studentId = request.get("studentId");
+        String courseCode = request.get("courseCode");
+
+        if (studentId == null || courseCode == null) {
+            response.put("status", "ERROR");
+            response.put("message", "studentId and courseCode are required.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        boolean success = enrollmentService.unenroll(studentId, courseCode);
+        response.put("status", success ? "SUCCESS" : "ERROR");
+        response.put("message", success ? "Dropped course " + courseCode : "Enrollment not found for " + courseCode);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Access Student Timetable (served from Redis Key-Value Store).
      * GET /api/students/{id}/timetable
      */
@@ -84,6 +106,7 @@ public class EnrollmentController {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "SUCCESS");
         response.put("studentId", studentId);
+        response.put("count", enrollments.size());
         response.put("enrollments", enrollments);
         return ResponseEntity.ok(response);
     }

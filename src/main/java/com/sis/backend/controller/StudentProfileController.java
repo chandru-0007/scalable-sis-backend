@@ -64,6 +64,12 @@ public class StudentProfileController {
 
         Optional<Student> studentOpt = studentRepository.findById(id);
         if (studentOpt.isEmpty()) {
+            studentOpt = mongoShardRouter.findStudent(id);
+            if (studentOpt.isEmpty()) {
+                studentOpt = studentRepository.findByRollNumber(id);
+            }
+        }
+        if (studentOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
 
@@ -81,6 +87,10 @@ public class StudentProfileController {
             } catch (NumberFormatException ignored) {
             }
         }
+        if (updates.containsKey("profilePicture")) {
+            Object pic = updates.get("profilePicture");
+            student.setProfilePicture(pic != null ? String.valueOf(pic) : null);
+        }
 
         Student saved = studentRepository.save(student);
 
@@ -90,6 +100,40 @@ public class StudentProfileController {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "SUCCESS");
         response.put("message", "Profile updated successfully");
+        response.put("student", sanitize(saved));
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Dedicated Profile Picture Update Endpoint.
+     * PUT /api/students/{id}/profile-picture
+     */
+    @PutMapping("/{id}/profile-picture")
+    public ResponseEntity<Map<String, Object>> updateProfilePicture(
+            @PathVariable String id,
+            @RequestBody Map<String, String> body) {
+
+        Optional<Student> studentOpt = studentRepository.findById(id);
+        if (studentOpt.isEmpty()) {
+            studentOpt = mongoShardRouter.findStudent(id);
+            if (studentOpt.isEmpty()) {
+                studentOpt = studentRepository.findByRollNumber(id);
+            }
+        }
+        if (studentOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Student student = studentOpt.get();
+        String pic = body.get("profilePicture");
+        student.setProfilePicture(pic);
+
+        Student saved = studentRepository.save(student);
+        authSessionService.createSession(saved);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("message", "Profile picture updated successfully");
         response.put("student", sanitize(saved));
         return ResponseEntity.ok(response);
     }
@@ -126,7 +170,9 @@ public class StudentProfileController {
         map.put("email", s.getEmail());
         map.put("department", s.getDepartment());
         map.put("semester", s.getSemester());
+        map.put("role", s.getRole() != null ? s.getRole() : "STUDENT");
         map.put("targetShard", s.getTargetShard());
+        map.put("profilePicture", s.getProfilePicture() != null ? s.getProfilePicture() : "");
         map.put("createdAt", s.getCreatedAt());
         return map;
     }

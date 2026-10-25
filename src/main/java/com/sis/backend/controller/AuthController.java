@@ -149,6 +149,7 @@ public class AuthController {
         profile.put("semester", saved.getSemester());
         profile.put("role", saved.getRole());
         profile.put("assignedShard", saved.getTargetShard());
+        profile.put("profilePicture", saved.getProfilePicture() != null ? saved.getProfilePicture() : "");
 
         response.put("student", profile);
 
@@ -218,6 +219,7 @@ public class AuthController {
         profile.put("semester", student.getSemester());
         profile.put("role", student.getRole());
         profile.put("assignedShard", student.getTargetShard());
+        profile.put("profilePicture", student.getProfilePicture() != null ? student.getProfilePicture() : "");
 
         response.put("student", profile);
 
@@ -265,6 +267,7 @@ public class AuthController {
             sessionData.put("semester", String.valueOf(live.getSemester()));
             sessionData.put("role", live.getRole() != null ? live.getRole() : "STUDENT");
             sessionData.put("targetShard", live.getTargetShard());
+            sessionData.put("profilePicture", live.getProfilePicture() != null ? live.getProfilePicture() : "");
             authSessionService.updateSession(token, sessionData);
         }
 

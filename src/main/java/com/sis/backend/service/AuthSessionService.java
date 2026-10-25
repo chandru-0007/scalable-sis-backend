@@ -42,6 +42,7 @@ public class AuthSessionService {
         sessionData.put("semester", String.valueOf(student.getSemester()));
         sessionData.put("role", student.getRole() != null ? student.getRole() : "STUDENT");
         sessionData.put("targetShard", student.getTargetShard());
+        sessionData.put("profilePicture", student.getProfilePicture() != null ? student.getProfilePicture() : "");
 
         try {
             // Save hash entries in Redis
