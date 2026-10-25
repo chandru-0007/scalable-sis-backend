@@ -19,6 +19,14 @@ public class AcademicNotice implements Serializable {
     private String shortUrl;
     private long scrapedAt;
 
+    // Engineering Internship and Department specific fields
+    private String department; // CSE, ECE, EEE, MECH, ALL
+    private String company;
+    private String deadline;
+    private String location;
+    private String stipend;
+    private String terms;
+
     public AcademicNotice() {
     }
 
@@ -37,6 +45,19 @@ public class AcademicNotice implements Serializable {
     public AcademicNotice(String id, String title, String content, String category,
                           String sourceUrl, long scrapedAt, String shortUrl) {
         this(id, title, category, content, sourceUrl, java.time.LocalDate.now().toString(), shortUrl, scrapedAt);
+    }
+
+    public AcademicNotice(String id, String title, String category, String content,
+                          String sourceUrl, String publishedDate, String shortUrl, long scrapedAt,
+                          String department, String company, String deadline,
+                          String location, String stipend, String terms) {
+        this(id, title, category, content, sourceUrl, publishedDate, shortUrl, scrapedAt);
+        this.department = department;
+        this.company = company;
+        this.deadline = deadline;
+        this.location = location;
+        this.stipend = stipend;
+        this.terms = terms;
     }
 
     public String getId() {
@@ -105,5 +126,53 @@ public class AcademicNotice implements Serializable {
 
     public long getCreatedAt() {
         return scrapedAt;
+    }
+
+    public String getDepartment() {
+        return department;
+    }
+
+    public void setDepartment(String department) {
+        this.department = department;
+    }
+
+    public String getCompany() {
+        return company;
+    }
+
+    public void setCompany(String company) {
+        this.company = company;
+    }
+
+    public String getDeadline() {
+        return deadline;
+    }
+
+    public void setDeadline(String deadline) {
+        this.deadline = deadline;
+    }
+
+    public String getLocation() {
+        return location;
+    }
+
+    public void setLocation(String location) {
+        this.location = location;
+    }
+
+    public String getStipend() {
+        return stipend;
+    }
+
+    public void setStipend(String stipend) {
+        this.stipend = stipend;
+    }
+
+    public String getTerms() {
+        return terms;
+    }
+
+    public void setTerms(String terms) {
+        this.terms = terms;
     }
 }

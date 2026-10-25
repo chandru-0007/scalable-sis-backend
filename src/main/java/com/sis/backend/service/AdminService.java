@@ -402,12 +402,14 @@ public class AdminService {
         }
 
         Map<String, Object> report = new HashMap<>();
+        report.put("status", "SUCCESS");
         report.put("cutoffPercentage", minPercentage);
         report.put("totalEnrollmentsEvaluated", allEnrollments.size());
         report.put("totalEligible", eligibleCount);
         report.put("totalDebarred", debarredCount);
         report.put("complianceRate", allEnrollments.isEmpty() ? 100.0 : Math.round((eligibleCount * 100.0 / allEnrollments.size()) * 10.0) / 10.0);
         report.put("flaggedRecords", flaggedStudents);
+        report.put("debarredStudents", flaggedStudents);
 
         return report;
     }

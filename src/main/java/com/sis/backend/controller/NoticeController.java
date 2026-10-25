@@ -21,12 +21,13 @@ public class NoticeController {
     }
 
     /**
-     * Get Academic Circulars & Notifications (Web Crawler Feed).
-     * GET /api/notices
+     * Get Academic Circulars & Engineering Internships (Web Crawler Feed).
+     * GET /api/notices?department=CSE
      */
     @GetMapping
-    public ResponseEntity<Map<String, Object>> getNotices() {
-        List<AcademicNotice> notices = webCrawlerService.crawlNotices();
+    public ResponseEntity<Map<String, Object>> getNotices(
+            @RequestParam(required = false) String department) {
+        List<AcademicNotice> notices = webCrawlerService.crawlNotices(department);
         Map<String, Object> response = new HashMap<>();
         response.put("status", "SUCCESS");
         response.put("count", notices.size());
@@ -35,16 +36,45 @@ public class NoticeController {
     }
 
     /**
-     * Manually trigger crawler cycle.
+     * Get Engineering Internships specifically.
+     * GET /api/notices/internships?department=CSE
+     */
+    @GetMapping("/internships")
+    public ResponseEntity<Map<String, Object>> getInternships(
+            @RequestParam(required = false) String department) {
+        List<AcademicNotice> all = webCrawlerService.crawlNotices(department);
+        List<AcademicNotice> internships = all.stream()
+                .filter(n -> "INTERNSHIP".equalsIgnoreCase(n.getCategory()))
+                .toList();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("count", internships.size());
+        response.put("notices", internships);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Manually trigger crawler cycle & re-index active opportunities.
      * POST /api/notices/crawl
      */
     @PostMapping("/crawl")
-    public ResponseEntity<Map<String, Object>> triggerCrawl() {
-        List<AcademicNotice> notices = webCrawlerService.crawlNotices();
+    public ResponseEntity<Map<String, Object>> triggerCrawl(
+            @RequestParam(required = false) String department) {
+        List<AcademicNotice> refreshed = webCrawlerService.refreshSampleNotices();
+        if (department != null && !department.isBlank() && !"ALL".equalsIgnoreCase(department)) {
+            refreshed = refreshed.stream()
+                    .filter(n -> n.getDepartment() == null ||
+                            "ALL".equalsIgnoreCase(n.getDepartment()) ||
+                            department.equalsIgnoreCase(n.getDepartment()))
+                    .toList();
+        }
+
         Map<String, Object> response = new HashMap<>();
         response.put("status", "SUCCESS");
-        response.put("message", "Web crawler cycle completed successfully.");
-        response.put("scrapedCount", notices.size());
+        response.put("message", "Web crawler cycle completed successfully. Refreshed active engineering internships and circulars.");
+        response.put("scrapedCount", refreshed.size());
+        response.put("notices", refreshed);
         return ResponseEntity.ok(response);
     }
 }

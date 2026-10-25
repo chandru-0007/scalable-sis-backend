@@ -69,6 +69,14 @@ public class AuthController {
                     consistentHashRing.getShard(id), System.currentTimeMillis()
             ));
         }
+        if (!studentRepository.existsByEmail("parent@college.edu") && !studentRepository.existsByRollNumber("PAR001")) {
+            String id = snowflakeIdGenerator.nextIdStr();
+            studentRepository.save(new Student(
+                    id, "PAR001", "Parent / Guardian", "parent@college.edu",
+                    passwordEncoder.encode("Parent@123"), "CSE", 7, "PARENT",
+                    consistentHashRing.getShard(id), System.currentTimeMillis()
+            ));
+        }
     }
 
     /**

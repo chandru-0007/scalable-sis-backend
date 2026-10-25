@@ -193,8 +193,9 @@ public class AdminController {
     /**
      * University-wide Attendance Cutoff Compliance Report.
      * GET /api/admin/reports/attendance-cutoff?minPercentage=75
+     * GET /api/admin/attendance/debarred-report
      */
-    @GetMapping("/reports/attendance-cutoff")
+    @GetMapping({"/reports/attendance-cutoff", "/attendance/debarred-report"})
     public ResponseEntity<Map<String, Object>> getAttendanceCutoffReport(
             @RequestParam(defaultValue = "75.0") double minPercentage) {
         return ResponseEntity.ok(adminService.getAttendanceCutoffReport(minPercentage));
