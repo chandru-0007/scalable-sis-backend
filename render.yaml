@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: scalable-sis-backend
+    env: java
+    plan: free
+    region: singapore
+    buildCommand: ./mvnw clean package -DskipTests
+    startCommand: java -jar target/sis-backend-0.0.1-SNAPSHOT.jar
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    envVars:
+      - key: JAVA_VERSION
+        value: 21
+      - key: MONGO_URI
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6379"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL
+        value: "true"
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: SIS_SNOWFLAKE_DATACENTER_ID
+        value: "1"
+      - key: SIS_SNOWFLAKE_WORKER_ID
+        value: "1"

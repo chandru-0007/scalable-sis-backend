@@ -1,0 +1,36 @@
+server:
+  port: ${PORT:${SERVER_PORT:8085}}
+
+spring:
+  application:
+    name: sis-backend
+
+  # ─── MongoDB Database ────────────────────────────────────────────
+  # Overridable via MONGO_URI env variable
+  data:
+    mongodb:
+      uri: ${MONGO_URI:mongodb://localhost:27017/sis_db}
+      auto-index-creation: false
+
+    # ─── Redis Cache / Key-Value Store ─────────────────────────────
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL:false}
+      timeout: 5000ms
+
+# ─── Actuator Endpoints ────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  endpoint:
+    health:
+      show-details: always
+
+# ─── Spring Security Default Credentials ───────────────────────────
+spring.security.user.name: ${SECURITY_USER:admin}
+spring.security.user.password: ${SECURITY_PASSWORD:admin}
