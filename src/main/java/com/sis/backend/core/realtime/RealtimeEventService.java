@@ -178,6 +178,50 @@ public class RealtimeEventService {
         broadcast("GRADE_SUBMITTED", data);
     }
 
+    public void emitAssignmentCreated(String courseCode, String title, String facultyName) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("type", "ASSIGNMENT_CREATED");
+        data.put("courseCode", courseCode);
+        data.put("title", title);
+        data.put("facultyName", facultyName);
+        data.put("message", "New Assignment posted for " + courseCode + ": " + title);
+        data.put("timestamp", System.currentTimeMillis());
+        broadcast("ASSIGNMENT_CREATED", data);
+    }
+
+    public void emitAssignmentSubmitted(String courseCode, String studentName, String assignmentTitle) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("type", "ASSIGNMENT_SUBMITTED");
+        data.put("courseCode", courseCode);
+        data.put("studentName", studentName);
+        data.put("assignmentTitle", assignmentTitle);
+        data.put("message", studentName + " submitted assignment: " + assignmentTitle);
+        data.put("timestamp", System.currentTimeMillis());
+        broadcast("ASSIGNMENT_SUBMITTED", data);
+    }
+
+    public void emitAssignmentEvaluated(String courseCode, String studentId, Double marks, int maxMarks) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("type", "ASSIGNMENT_EVALUATED");
+        data.put("courseCode", courseCode);
+        data.put("studentId", studentId);
+        data.put("marks", marks);
+        data.put("maxMarks", maxMarks);
+        data.put("message", "Assignment evaluated for " + courseCode + ": Score " + marks + "/" + maxMarks);
+        data.put("timestamp", System.currentTimeMillis());
+        broadcast("ASSIGNMENT_EVALUATED", data);
+    }
+
+    public void emitResultsPublished(String courseCode, int totalStudents) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("type", "RESULTS_PUBLISHED");
+        data.put("courseCode", courseCode);
+        data.put("totalStudents", totalStudents);
+        data.put("message", "Official semester results published for " + courseCode + " (" + totalStudents + " students graded)");
+        data.put("timestamp", System.currentTimeMillis());
+        broadcast("RESULTS_PUBLISHED", data);
+    }
+
     /**
      * Broadcast Shard Elastic Scale or Failover Event
      */

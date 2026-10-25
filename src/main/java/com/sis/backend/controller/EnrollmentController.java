@@ -112,6 +112,16 @@ public class EnrollmentController {
     }
 
     /**
+     * Get Student Official Published Results & Semester SGPA Report.
+     * GET /api/students/{id}/results
+     */
+    @GetMapping("/students/{id}/results")
+    public ResponseEntity<Map<String, Object>> getPublishedResults(@PathVariable("id") String studentId) {
+        Map<String, Object> results = enrollmentService.getStudentPublishedResults(studentId);
+        return ResponseEntity.ok(results);
+    }
+
+    /**
      * Examination & Grade Management.
      * PUT /api/enrollments/{id}/grade
      */
