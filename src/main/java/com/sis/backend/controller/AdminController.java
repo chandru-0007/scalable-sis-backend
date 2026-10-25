@@ -201,6 +201,24 @@ public class AdminController {
     }
 
     /**
+     * Debarred Students report matching frontend contract.
+     * GET /api/admin/attendance/debarred-report
+     */
+    @GetMapping("/attendance/debarred-report")
+    public ResponseEntity<Map<String, Object>> getDebarredReport(
+            @RequestParam(defaultValue = "75.0") double minPercentage) {
+        Map<String, Object> rawReport = adminService.getAttendanceCutoffReport(minPercentage);
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("cutoffPercentage", minPercentage);
+        response.put("totalDebarred", rawReport.get("totalDebarred"));
+        response.put("totalEligible", rawReport.get("totalEligible"));
+        response.put("complianceRate", rawReport.get("complianceRate"));
+        response.put("debarredStudents", rawReport.get("flaggedRecords"));
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Academic Leadership & Registrar Overview Metrics.
      * GET /api/admin/reports/overview
      */
