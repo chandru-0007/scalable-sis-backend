@@ -27,7 +27,7 @@ public class NoticeController {
     @GetMapping
     public ResponseEntity<Map<String, Object>> getNotices(
             @RequestParam(required = false) String department) {
-        List<AcademicNotice> notices = webCrawlerService.crawlNotices(department);
+        List<AcademicNotice> notices = webCrawlerService.getActiveNotices(department);
         Map<String, Object> response = new HashMap<>();
         response.put("status", "SUCCESS");
         response.put("count", notices.size());

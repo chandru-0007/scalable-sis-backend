@@ -149,6 +149,11 @@ public class AdminService {
      * 4. Automatically publishes an official Academic Notice with a Base62 Short URL.
      */
     public Course rescheduleCourse(String courseCode, String newSchedule, String newRoom, String reason) {
+        Map<String, Object> report = rescheduleCourseWithReport(courseCode, newSchedule, newRoom, reason);
+        return (Course) report.get("course");
+    }
+
+    public Map<String, Object> rescheduleCourseWithReport(String courseCode, String newSchedule, String newRoom, String reason) {
         String code = courseCode.trim().toUpperCase();
         Course course = courseRepository.findByCode(code)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + code));
@@ -192,7 +197,15 @@ public class AdminService {
         String shortUrl = notice != null ? notice.getShortUrl() : "";
         realtimeEventService.emitReschedule(code, course.getSchedule(), course.getRoom(), reason, shortUrl);
 
-        return saved;
+        Map<String, Object> report = new HashMap<>();
+        report.put("status", "SUCCESS");
+        report.put("message", "Course " + code + " successfully rescheduled.");
+        report.put("course", saved);
+        report.put("invalidatedStudentCaches", enrolledList.size());
+        report.put("courseCacheStatus", "Cache Invalidation Purged (TTL Refreshed)");
+        report.put("broadcastCircular", noticeTitle);
+        report.put("shortUrl", shortUrl);
+        return report;
     }
 
     /**

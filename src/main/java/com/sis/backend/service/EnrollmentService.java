@@ -100,6 +100,13 @@ public class EnrollmentService {
             throw new IllegalStateException("Course " + code + " is " + course.getStatus() + " and not accepting new registrations.");
         }
 
+        // 4b. Semester standing validation check (Prevent enrolling in previous semesters)
+        if (student.getSemester() > 0 && course.getSemester() > 0 && course.getSemester() < student.getSemester()) {
+            throw new IllegalStateException("Semester Restriction: You are currently enrolled in Semester " +
+                    student.getSemester() + ". Course " + code + " belongs to Semester " + course.getSemester() +
+                    ". Enrolling in previous semester courses is prohibited.");
+        }
+
         // 5. Seat capacity check
         if (course.getEnrolled() >= course.getCapacity()) {
             throw new IllegalStateException("Course " + code + " has reached maximum capacity (" + course.getCapacity() + " seats).");

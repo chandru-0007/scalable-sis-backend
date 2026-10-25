@@ -27,7 +27,10 @@ public class UrlShortenerController {
     public ResponseEntity<Map<String, Object>> shortenUrl(@RequestBody Map<String, String> body) {
         String url = body.get("url");
         if (url == null || url.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "url is required"));
+            url = body.get("originalUrl");
+        }
+        if (url == null || url.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "url or originalUrl is required"));
         }
 
         String code = urlShortenerService.shorten(url);

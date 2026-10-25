@@ -16,4 +16,6 @@ public interface NoticeRepository extends MongoRepository<AcademicNotice, String
     List<AcademicNotice> findByCategoryAndDepartment(String category, String department);
 
     List<AcademicNotice> findAllByOrderByScrapedAtDesc();
+
+    boolean existsBySourceUrl(String sourceUrl);
 }

@@ -88,11 +88,7 @@ public class AdminController {
         String newRoom = body.get("newRoom");
         String reason = body.get("reason");
 
-        Course updated = adminService.rescheduleCourse(code, newSchedule, newRoom, reason);
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "SUCCESS");
-        response.put("message", "Course " + code + " successfully rescheduled.");
-        response.put("course", updated);
+        Map<String, Object> response = adminService.rescheduleCourseWithReport(code, newSchedule, newRoom, reason);
         return ResponseEntity.ok(response);
     }
 

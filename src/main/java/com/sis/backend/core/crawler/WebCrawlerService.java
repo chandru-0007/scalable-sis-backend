@@ -63,13 +63,33 @@ public class WebCrawlerService {
 
     @PostConstruct
     public void init() {
-        // Run initial crawler cycle on startup to ensure fresh, non-expired internships are ready
-        crawlNotices(null);
+        // Seed initial notices on cold start if database is empty
+        if (noticeRepository.count() == 0) {
+            crawlNotices(null);
+        }
+    }
+
+    /**
+     * Get active upcoming notices and internships directly from database/cache without triggering external HTTP scrape.
+     * Sub-millisecond latency.
+     */
+    public List<AcademicNotice> getActiveNotices(String department) {
+        List<AcademicNotice> allNotices = noticeRepository.findAllByOrderByScrapedAtDesc();
+        return allNotices.stream()
+                .filter(n -> !n.isExpired())
+                .filter(n -> {
+                    if (department == null || department.isBlank() || department.equalsIgnoreCase("ALL")) {
+                        return true;
+                    }
+                    return n.getDepartment() != null &&
+                            (n.getDepartment().equalsIgnoreCase(department) || n.getDepartment().equalsIgnoreCase("ALL"));
+                })
+                .collect(Collectors.toList());
     }
 
     /**
      * Crawl / refresh engineering internships and academic notices.
-     * Only upcoming, non-expired notices are returned.
+     * Only upcoming, non-expired notices are returned. Deduplicates strictly by sourceUrl.
      *
      * @param department Optional filter (e.g. "CSE", "ECE", "EEE", "MECH")
      * @return List of active upcoming notices and internships
@@ -88,39 +108,35 @@ public class WebCrawlerService {
         List<AcademicNotice> verifiedSet = getVerifiedUpcomingEngineeringInternships();
 
         // Combine and save newly discovered items
-        Map<String, AcademicNotice> deduplicated = new LinkedHashMap<>();
+        Map<String, AcademicNotice> candidates = new LinkedHashMap<>();
         for (AcademicNotice item : verifiedSet) {
-            deduplicated.put(item.getSourceUrl(), item);
+            candidates.put(item.getSourceUrl(), item);
         }
         for (AcademicNotice item : liveFetched) {
-            deduplicated.put(item.getSourceUrl(), item);
+            candidates.put(item.getSourceUrl(), item);
         }
 
         // Also add standard academic notices (exams, schedules, policy)
         for (AcademicNotice notice : getStandardCampusCirculars()) {
-            deduplicated.put(notice.getSourceUrl(), notice);
+            candidates.put(notice.getSourceUrl(), notice);
         }
 
-        for (AcademicNotice notice : deduplicated.values()) {
-            if (!notice.isExpired()) {
+        // Fetch all existing source URLs from database to strictly prevent duplicate insertions
+        Set<String> existingUrls = noticeRepository.findAll().stream()
+                .map(AcademicNotice::getSourceUrl)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        for (AcademicNotice notice : candidates.values()) {
+            if (!notice.isExpired() && (notice.getSourceUrl() == null || !existingUrls.contains(notice.getSourceUrl()))) {
                 noticeRepository.save(notice);
+                if (notice.getSourceUrl() != null) {
+                    existingUrls.add(notice.getSourceUrl());
+                }
             }
         }
 
-        // 4. Retrieve all from repository and filter out expired
-        List<AcademicNotice> allNotices = noticeRepository.findAllByOrderByScrapedAtDesc();
-        LocalDate today = LocalDate.now();
-
-        List<AcademicNotice> activeNotices = allNotices.stream()
-                .filter(n -> !n.isExpired())
-                .filter(n -> {
-                    if (department == null || department.isBlank() || department.equalsIgnoreCase("ALL")) {
-                        return true;
-                    }
-                    return n.getDepartment() != null &&
-                            (n.getDepartment().equalsIgnoreCase(department) || n.getDepartment().equalsIgnoreCase("ALL"));
-                })
-                .collect(Collectors.toList());
+        List<AcademicNotice> activeNotices = getActiveNotices(department);
 
         // Cache count in Redis
         keyValueCacheService.put(NOTICE_CACHE_KEY, "CACHED_" + activeNotices.size(), Duration.ofHours(1));
@@ -133,7 +149,7 @@ public class WebCrawlerService {
      * Get only active, upcoming Engineering Internships filtered by department.
      */
     public List<AcademicNotice> getUpcomingInternships(String department) {
-        List<AcademicNotice> all = crawlNotices(department);
+        List<AcademicNotice> all = getActiveNotices(department);
         return all.stream()
                 .filter(n -> "INTERNSHIP".equalsIgnoreCase(n.getCategory()))
                 .filter(n -> !n.isExpired())
