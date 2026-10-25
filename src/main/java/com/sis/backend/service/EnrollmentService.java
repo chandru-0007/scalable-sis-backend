@@ -16,9 +16,7 @@ import com.sis.backend.repository.StudentRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class EnrollmentService {
@@ -276,6 +274,93 @@ public class EnrollmentService {
         Enrollment updated = enrollmentRepository.save(enrollment);
         keyValueCacheService.evict(TIMETABLE_CACHE_PREFIX + enrollment.getStudentId());
         return updated;
+    }
+
+    public Map<String, Object> getStudentPublishedResults(String studentIdentifier) {
+        Optional<Student> studentOpt = resolveStudent(studentIdentifier);
+        if (studentOpt.isEmpty()) {
+            Map<String, Object> empty = new HashMap<>();
+            empty.put("status", "ERROR");
+            empty.put("message", "Student not found");
+            return empty;
+        }
+
+        Student student = studentOpt.get();
+        List<Enrollment> enrollments = getStudentEnrollments(student.getId());
+
+        List<Map<String, Object>> courseResults = new ArrayList<>();
+        double totalWeightedGradePoints = 0.0;
+        int totalCredits = 0;
+        int publishedCount = 0;
+
+        for (Enrollment e : enrollments) {
+            Map<String, Object> cr = new HashMap<>();
+            cr.put("enrollmentId", e.getId());
+            cr.put("courseCode", e.getCourseCode());
+            cr.put("courseTitle", e.getCourseTitle());
+            cr.put("grade", e.getGrade() != null ? e.getGrade() : "Pending");
+            cr.put("gradePoint", e.getGradePoint());
+            cr.put("marks", e.getMarks() != null ? e.getMarks() : 0.0);
+            cr.put("attendancePercentage", e.getAttendancePercentage());
+            cr.put("resultStatus", e.getResultStatus() != null ? e.getResultStatus() : "PENDING");
+            cr.put("remarks", e.getRemarks() != null ? e.getRemarks() : "In Progress");
+            cr.put("publishedAt", e.getPublishedAt());
+
+            int credits = 3;
+            String instructor = "Faculty";
+            String department = student.getDepartment();
+
+            Optional<Course> courseOpt = courseRepository.findByCode(e.getCourseCode());
+            if (courseOpt.isPresent()) {
+                Course c = courseOpt.get();
+                credits = c.getCredits();
+                instructor = c.getInstructor();
+                department = c.getDepartment();
+            }
+
+            cr.put("credits", credits);
+            cr.put("instructor", instructor);
+            cr.put("department", department);
+
+            courseResults.add(cr);
+
+            if ("PUBLISHED".equalsIgnoreCase(e.getResultStatus()) || (e.getGrade() != null && !e.getGrade().equalsIgnoreCase("Pending"))) {
+                publishedCount++;
+                totalWeightedGradePoints += (e.getGradePoint() * credits);
+                totalCredits += credits;
+            }
+        }
+
+        double sgpa = totalCredits > 0 ? (Math.round((totalWeightedGradePoints / totalCredits) * 100.0) / 100.0) : 0.0;
+        String academicStanding;
+        if (sgpa >= 8.5) {
+            academicStanding = "FIRST CLASS WITH DISTINCTION";
+        } else if (sgpa >= 7.0) {
+            academicStanding = "FIRST CLASS";
+        } else if (sgpa >= 5.0) {
+            academicStanding = "SECOND CLASS";
+        } else if (totalCredits == 0) {
+            academicStanding = "EVALUATION IN PROGRESS";
+        } else {
+            academicStanding = "ACADEMIC WARNING";
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("studentId", student.getId());
+        response.put("rollNumber", student.getRollNumber());
+        response.put("studentName", student.getName());
+        response.put("email", student.getEmail());
+        response.put("department", student.getDepartment());
+        response.put("semester", student.getSemester());
+        response.put("sgpa", sgpa);
+        response.put("totalCredits", totalCredits);
+        response.put("totalCourses", enrollments.size());
+        response.put("publishedCount", publishedCount);
+        response.put("academicStanding", academicStanding);
+        response.put("results", courseResults);
+
+        return response;
     }
 
     private boolean isScheduleCollision(String sched1, String sched2) {

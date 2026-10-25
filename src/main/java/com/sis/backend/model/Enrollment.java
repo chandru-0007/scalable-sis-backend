@@ -33,6 +33,11 @@ public class Enrollment implements Serializable {
     private String targetShard; // Logical partition
     private long enrolledAt;
 
+    private Double marks; // e.g. 95.0
+    private String resultStatus = "PENDING"; // "PENDING", "PUBLISHED"
+    private String remarks; // Faculty remarks, e.g., "Passed with Distinction"
+    private Long publishedAt; // epoch millis when official results were published
+
     public Enrollment() {
     }
 
@@ -138,5 +143,37 @@ public class Enrollment implements Serializable {
 
     public void setEnrolledAt(long enrolledAt) {
         this.enrolledAt = enrolledAt;
+    }
+
+    public Double getMarks() {
+        return marks;
+    }
+
+    public void setMarks(Double marks) {
+        this.marks = marks;
+    }
+
+    public String getResultStatus() {
+        return resultStatus != null ? resultStatus : "PENDING";
+    }
+
+    public void setResultStatus(String resultStatus) {
+        this.resultStatus = resultStatus;
+    }
+
+    public String getRemarks() {
+        return remarks;
+    }
+
+    public void setRemarks(String remarks) {
+        this.remarks = remarks;
+    }
+
+    public Long getPublishedAt() {
+        return publishedAt;
+    }
+
+    public void setPublishedAt(Long publishedAt) {
+        this.publishedAt = publishedAt;
     }
 }

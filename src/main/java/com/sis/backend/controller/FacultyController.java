@@ -83,6 +83,8 @@ public class FacultyController {
         String enrollmentId = (String) payload.get("enrollmentId");
         String grade = (String) payload.get("grade");
         Number gp = (Number) payload.getOrDefault("gradePoint", 0.0);
+        Number marks = (Number) payload.get("marks");
+        String remarks = (String) payload.get("remarks");
 
         if (enrollmentId == null || grade == null) {
             Map<String, Object> err = new HashMap<>();
@@ -91,13 +93,40 @@ public class FacultyController {
             return ResponseEntity.badRequest().body(err);
         }
 
-        Enrollment updated = facultyService.submitGrade(enrollmentId, grade, gp.doubleValue());
+        Enrollment updated = facultyService.submitGrade(
+                enrollmentId,
+                grade,
+                gp.doubleValue(),
+                marks != null ? marks.doubleValue() : null,
+                remarks
+        );
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "SUCCESS");
-        response.put("message", "Grade updated successfully.");
+        response.put("message", "Grade and result published successfully.");
         response.put("enrollment", updated);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Batch publish all student grades and final course results.
+     * POST /api/faculty/courses/{courseCode}/publish-results
+     * Body: { "grades": [ { "enrollmentId": "...", "grade": "A+", "gradePoint": 9.0, "marks": 92.0, "remarks": "..." } ], "facultyName": "..." }
+     */
+    @PostMapping("/courses/{courseCode}/publish-results")
+    public ResponseEntity<Map<String, Object>> publishCourseResults(
+            @PathVariable String courseCode,
+            @RequestBody(required = false) Map<String, Object> payload) {
+
+        List<Map<String, Object>> gradesList = null;
+        String facultyName = null;
+        if (payload != null) {
+            gradesList = (List<Map<String, Object>>) payload.get("grades");
+            facultyName = (String) payload.get("facultyName");
+        }
+
+        Map<String, Object> result = facultyService.publishCourseResults(courseCode, gradesList, facultyName);
+        return ResponseEntity.ok(result);
     }
 
     /**
