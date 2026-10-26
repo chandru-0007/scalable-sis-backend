@@ -99,6 +99,15 @@ public class AdminService {
     }
 
     /**
+     * Get list of all enrolled students in the university.
+     */
+    public List<Student> getAllStudents() {
+        return studentRepository.findAll().stream()
+                .filter(s -> s.getRole() == null || "STUDENT".equalsIgnoreCase(s.getRole()))
+                .toList();
+    }
+
+    /**
      * Admin/Registrar/HOD assigns or reassigns a faculty instructor to a course.
      * Records instructor reassignment history, updates Prefix Trie, and evicts course/timetable caches.
      */

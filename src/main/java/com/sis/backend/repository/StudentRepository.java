@@ -16,4 +16,6 @@ public interface StudentRepository extends MongoRepository<Student, String> {
     boolean existsByEmail(String email);
 
     boolean existsByRollNumber(String rollNumber);
+
+    java.util.List<Student> findByRole(String role);
 }

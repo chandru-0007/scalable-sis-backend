@@ -18,5 +18,7 @@ public interface EnrollmentRepository extends MongoRepository<Enrollment, String
 
     boolean existsByStudentIdAndCourseCode(String studentId, String courseCode);
 
+    long countByCourseCode(String courseCode);
+
     long countByTargetShard(String targetShard);
 }

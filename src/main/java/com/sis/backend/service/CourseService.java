@@ -7,6 +7,7 @@ import com.sis.backend.core.id.SnowflakeIdGenerator;
 import com.sis.backend.core.kv.KeyValueCacheService;
 import com.sis.backend.model.Course;
 import com.sis.backend.repository.CourseRepository;
+import com.sis.backend.repository.EnrollmentRepository;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
@@ -22,16 +23,19 @@ public class CourseService {
     private static final Duration CACHE_TTL = Duration.ofMinutes(10);
 
     private final CourseRepository courseRepository;
+    private final EnrollmentRepository enrollmentRepository;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
     private final KeyValueCacheService keyValueCacheService;
     private final TrieAutocompleteService trieAutocompleteService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public CourseService(CourseRepository courseRepository,
+                         EnrollmentRepository enrollmentRepository,
                          SnowflakeIdGenerator snowflakeIdGenerator,
                          KeyValueCacheService keyValueCacheService,
                          TrieAutocompleteService trieAutocompleteService) {
         this.courseRepository = courseRepository;
+        this.enrollmentRepository = enrollmentRepository;
         this.snowflakeIdGenerator = snowflakeIdGenerator;
         this.keyValueCacheService = keyValueCacheService;
         this.trieAutocompleteService = trieAutocompleteService;
@@ -64,6 +68,10 @@ public class CourseService {
 
         // 2. Cache miss -> Read from Database
         List<Course> courses = courseRepository.findAll();
+        for (Course c : courses) {
+            long realEnrolled = enrollmentRepository.countByCourseCode(c.getCode());
+            c.setEnrolled((int) realEnrolled);
+        }
 
         // 3. Write back to Redis Key-Value Store
         try {
@@ -91,7 +99,12 @@ public class CourseService {
     }
 
     public Optional<Course> getCourseByCode(String code) {
-        return courseRepository.findByCode(code.trim().toUpperCase());
+        Optional<Course> courseOpt = courseRepository.findByCode(code.trim().toUpperCase());
+        courseOpt.ifPresent(c -> {
+            long realEnrolled = enrollmentRepository.countByCourseCode(c.getCode());
+            c.setEnrolled((int) realEnrolled);
+        });
+        return courseOpt;
     }
 
     public List<TrieAutocompleteService.CourseSuggestion> getSuggestions(String query, int limit) {
@@ -101,11 +114,11 @@ public class CourseService {
     private void seedSampleCourses() {
         List<Course> list = new ArrayList<>();
         list.add(new Course(snowflakeIdGenerator.nextIdStr(), "CS101", "Introduction to Computing", "CSE", 3,
-                "Dr. A. Ramanathan", "FAC001", 60, 42, "Mon 09:00-10:30, Wed 09:00-10:30", "LH-101",
+                "Dr. A. Ramanathan", "FAC001", 60, 0, "Mon 09:00-10:30, Wed 09:00-10:30", "LH-101",
                 1, "2026-2027", "Odd Semester (Fall 2026)", "2026-08-01", "2026-12-15", "ACTIVE"));
 
         list.add(new Course(snowflakeIdGenerator.nextIdStr(), "CS201", "Data Structures and Algorithms", "CSE", 4,
-                "Dr. A. Ramanathan", "FAC001", 60, 58, "Tue 10:30-12:00, Thu 10:30-12:00", "LH-102",
+                "Dr. A. Ramanathan", "FAC001", 60, 0, "Tue 10:30-12:00, Thu 10:30-12:00", "LH-102",
                 3, "2026-2027", "Odd Semester (Fall 2026)", "2026-08-01", "2026-12-15", "ACTIVE"));
 
         list.add(new Course(snowflakeIdGenerator.nextIdStr(), "CS301", "Database Management Systems", "CSE", 4,

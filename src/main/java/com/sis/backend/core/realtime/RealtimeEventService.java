@@ -99,6 +99,7 @@ public class RealtimeEventService {
      * Broadcast an arbitrary event to all connected clients.
      */
     public void broadcast(String eventName, Map<String, Object> data) {
+        if (emitters.isEmpty()) return;
         List<SseEmitter> deadEmitters = new ArrayList<>();
 
         for (SseEmitter emitter : emitters) {
@@ -108,10 +109,15 @@ public class RealtimeEventService {
                         .data(data));
             } catch (Exception e) {
                 deadEmitters.add(emitter);
+                try {
+                    emitter.complete();
+                } catch (Exception ignored) {}
             }
         }
 
-        emitters.removeAll(deadEmitters);
+        if (!deadEmitters.isEmpty()) {
+            emitters.removeAll(deadEmitters);
+        }
     }
 
     /**
@@ -262,7 +268,11 @@ public class RealtimeEventService {
         telemetry.put("avgLatencyMs", simulatedLatencyMs);
         telemetry.put("timestamp", System.currentTimeMillis());
 
-        broadcast("TELEMETRY", telemetry);
+        try {
+            broadcast("TELEMETRY", telemetry);
+        } catch (Throwable t) {
+            log.debug("Telemetry heartbeat broadcast suppressed: {}", t.getMessage());
+        }
     }
 
     public int getConnectedClientsCount() {

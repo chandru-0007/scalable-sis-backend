@@ -3,6 +3,8 @@ package com.sis.backend.controller;
 import com.sis.backend.model.AcademicNotice;
 import com.sis.backend.model.Course;
 import com.sis.backend.service.AdminService;
+import com.sis.backend.service.CourseService;
+import com.sis.backend.service.EnrollmentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,9 +19,15 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminService adminService;
+    private final CourseService courseService;
+    private final EnrollmentService enrollmentService;
 
-    public AdminController(AdminService adminService) {
+    public AdminController(AdminService adminService,
+                           CourseService courseService,
+                           EnrollmentService enrollmentService) {
         this.adminService = adminService;
+        this.courseService = courseService;
+        this.enrollmentService = enrollmentService;
     }
 
     /**
@@ -216,11 +224,25 @@ public class AdminController {
 
     /**
      * Academic Leadership & Registrar Overview Metrics.
-     * GET /api/admin/reports/overview
+     * GET /api/admin/overview or /api/admin/reports/overview
      */
-    @GetMapping("/reports/overview")
+    @GetMapping({"/overview", "/reports/overview"})
     public ResponseEntity<Map<String, Object>> getOverview() {
         return ResponseEntity.ok(adminService.getUniversityOverview());
+    }
+
+    /**
+     * Get all enrolled students for Admin directory & overrides.
+     * GET /api/admin/students
+     */
+    @GetMapping("/students")
+    public ResponseEntity<Map<String, Object>> getAdminStudents() {
+        List<com.sis.backend.model.Student> students = adminService.getAllStudents();
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("count", students.size());
+        response.put("students", students);
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -236,5 +258,67 @@ public class AdminController {
 
         AcademicNotice notice = adminService.publishOfficialNotice(title, content, author, externalUrl);
         return ResponseEntity.status(HttpStatus.CREATED).body(notice);
+    }
+
+    /**
+     * Get all courses for Admin management.
+     * GET /api/admin/courses
+     */
+    @GetMapping("/courses")
+    public ResponseEntity<List<Course>> getAllCourses() {
+        return ResponseEntity.ok(courseService.getAllCourses());
+    }
+
+    /**
+     * Admin Direct Course Enrollment Override.
+     * POST /api/admin/students/enroll
+     */
+    @PostMapping("/students/enroll")
+    public ResponseEntity<Map<String, Object>> adminEnrollStudent(@RequestBody Map<String, String> body) {
+        String studentIdentifier = body.get("studentId");
+        if (studentIdentifier == null || studentIdentifier.isBlank()) {
+            studentIdentifier = body.get("rollNumber");
+        }
+        String courseCode = body.get("courseCode");
+
+        if (studentIdentifier == null || courseCode == null) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("status", "ERROR");
+            err.put("message", "studentId/rollNumber and courseCode are required.");
+            return ResponseEntity.badRequest().body(err);
+        }
+
+        try {
+            var enrollment = enrollmentService.enroll(studentIdentifier, courseCode);
+            Map<String, Object> res = new HashMap<>();
+            res.put("status", "SUCCESS");
+            res.put("message", "Student " + studentIdentifier + " enrolled in " + courseCode + " by Admin Override.");
+            res.put("enrollment", enrollment);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("status", "ERROR");
+            err.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(err);
+        }
+    }
+
+    /**
+     * Admin Direct Course Drop Override.
+     * DELETE /api/admin/students/enroll
+     */
+    @DeleteMapping("/students/enroll")
+    public ResponseEntity<Map<String, Object>> adminDropStudent(@RequestBody Map<String, String> body) {
+        String studentIdentifier = body.get("studentId");
+        if (studentIdentifier == null || studentIdentifier.isBlank()) {
+            studentIdentifier = body.get("rollNumber");
+        }
+        String courseCode = body.get("courseCode");
+
+        boolean dropped = enrollmentService.unenroll(studentIdentifier, courseCode);
+        Map<String, Object> res = new HashMap<>();
+        res.put("status", dropped ? "SUCCESS" : "ERROR");
+        res.put("message", dropped ? "Student " + studentIdentifier + " unenrolled from " + courseCode : "Enrollment not found.");
+        return ResponseEntity.ok(res);
     }
 }

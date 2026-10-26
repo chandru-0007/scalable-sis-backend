@@ -42,25 +42,75 @@ public class FacultyService {
     }
 
     /**
-     * Get courses assigned to a faculty member by ID, name, or department.
+     * Get courses assigned to a faculty member by ID, rollNumber, name, or department.
      */
     public List<Course> getCoursesForFaculty(String facultyName, String facultyId, String department) {
         List<Course> all = courseRepository.findAll();
-        if (facultyId != null && !facultyId.isBlank()) {
-            String fId = facultyId.trim();
-            return all.stream()
-                    .filter(c -> fId.equalsIgnoreCase(c.getFacultyId()))
-                    .toList();
+
+        String targetRoll = facultyId != null && !facultyId.isBlank() ? facultyId.trim() : null;
+        String targetName = facultyName != null && !facultyName.isBlank() ? facultyName.trim() : null;
+        String targetDept = department != null && !department.isBlank() ? department.trim() : null;
+
+        // If facultyId is provided, resolve student/faculty profile from StudentRepository
+        if (targetRoll != null) {
+            Optional<Student> sOpt = studentRepository.findById(targetRoll);
+            if (sOpt.isEmpty()) sOpt = studentRepository.findByRollNumber(targetRoll);
+            if (sOpt.isEmpty()) sOpt = studentRepository.findByEmail(targetRoll);
+            if (sOpt.isPresent()) {
+                Student s = sOpt.get();
+                targetRoll = s.getRollNumber();
+                if (targetName == null || targetName.isBlank()) targetName = s.getName();
+                if (targetDept == null || targetDept.isBlank()) targetDept = s.getDepartment();
+            }
         }
-        if (facultyName != null && !facultyName.isBlank()) {
-            String lower = facultyName.trim().toLowerCase();
-            return all.stream()
-                    .filter(c -> c.getInstructor() != null && c.getInstructor().toLowerCase().contains(lower))
-                    .toList();
+
+        // Extract core keyword from facultyName (e.g. "Ramanathan" from "Dr. A. Ramanathan", "Priya" from "Dr. Priya Sharma")
+        String coreKeyword = null;
+        if (targetName != null) {
+            String[] tokens = targetName.split("\\s+");
+            for (int i = tokens.length - 1; i >= 0; i--) {
+                String clean = tokens[i].replaceAll("[^a-zA-Z]", "");
+                if (clean.length() >= 3 && !clean.equalsIgnoreCase("Dr") && !clean.equalsIgnoreCase("Prof")) {
+                    coreKeyword = clean.toLowerCase();
+                    break;
+                }
+            }
+            if (coreKeyword == null) coreKeyword = targetName.toLowerCase();
         }
-        if (department != null && !department.isBlank()) {
-            return courseRepository.findByDepartmentIgnoreCase(department.trim());
+
+        final String fRoll = targetRoll;
+        final String fRawId = facultyId != null ? facultyId.trim() : null;
+        final String fNameLower = targetName != null ? targetName.toLowerCase() : null;
+        final String fCore = coreKeyword;
+
+        List<Course> matched = all.stream().filter(c -> {
+            // 1. Check facultyId match (roll number or raw ID)
+            if (c.getFacultyId() != null && !c.getFacultyId().isBlank()) {
+                if (fRoll != null && fRoll.equalsIgnoreCase(c.getFacultyId())) return true;
+                if (fRawId != null && fRawId.equalsIgnoreCase(c.getFacultyId())) return true;
+            }
+            // 2. Check instructor name match
+            if (c.getInstructor() != null && !c.getInstructor().isBlank()) {
+                String instLower = c.getInstructor().toLowerCase();
+                if (fNameLower != null && (instLower.contains(fNameLower) || fNameLower.contains(instLower))) return true;
+                if (fCore != null && instLower.contains(fCore)) return true;
+            }
+            return false;
+        }).toList();
+
+        if (!matched.isEmpty()) {
+            return matched;
         }
+
+        // Fallback 1: Return courses matching department
+        if (targetDept != null && !targetDept.isBlank()) {
+            List<Course> deptCourses = courseRepository.findByDepartmentIgnoreCase(targetDept);
+            if (!deptCourses.isEmpty()) {
+                return deptCourses;
+            }
+        }
+
+        // Fallback 2: Return all courses so faculty is never locked out
         return all;
     }
 
@@ -125,13 +175,28 @@ public class FacultyService {
         for (Map<String, Object> record : attendanceList) {
             String studentId = (String) record.get("studentId");
             String enrollmentId = (String) record.get("enrollmentId");
-            boolean attended = Boolean.TRUE.equals(record.get("attended")) || "PRESENT".equalsIgnoreCase(String.valueOf(record.get("status")));
+            boolean attended = Boolean.TRUE.equals(record.get("attended")) ||
+                    "true".equalsIgnoreCase(String.valueOf(record.get("attended"))) ||
+                    "PRESENT".equalsIgnoreCase(String.valueOf(record.get("status")));
 
             Optional<Enrollment> opt = Optional.empty();
             if (enrollmentId != null && !enrollmentId.isBlank()) {
                 opt = enrollmentRepository.findById(enrollmentId);
-            } else if (studentId != null && !studentId.isBlank()) {
+            }
+            if (opt.isEmpty() && studentId != null && !studentId.isBlank()) {
                 opt = enrollmentRepository.findByStudentIdAndCourseCode(studentId, code);
+                if (opt.isEmpty()) {
+                    Optional<Student> byRoll = studentRepository.findByRollNumber(studentId);
+                    if (byRoll.isPresent()) {
+                        opt = enrollmentRepository.findByStudentIdAndCourseCode(byRoll.get().getId(), code);
+                    }
+                }
+                if (opt.isEmpty()) {
+                    Optional<Student> byId = studentRepository.findById(studentId);
+                    if (byId.isPresent()) {
+                        opt = enrollmentRepository.findByStudentIdAndCourseCode(byId.get().getId(), code);
+                    }
+                }
             }
 
             if (opt.isPresent()) {
@@ -145,7 +210,9 @@ public class FacultyService {
                 e.setAttendancePercentage(Math.round(pct * 10.0) / 10.0);
 
                 enrollmentRepository.save(e);
-                keyValueCacheService.evict("cache:timetable:" + e.getStudentId());
+                if (e.getStudentId() != null) {
+                    keyValueCacheService.evict("cache:timetable:" + e.getStudentId());
+                }
                 count++;
             }
         }
