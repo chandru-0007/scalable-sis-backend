@@ -71,4 +71,20 @@ public class TimetableEntry implements Serializable {
     public void setInstructor(String instructor) {
         this.instructor = instructor;
     }
+
+    public String getDay() {
+        return dayOfWeek;
+    }
+
+    public void setDay(String day) {
+        this.dayOfWeek = day;
+    }
+
+    public String getTime() {
+        return timeSlot;
+    }
+
+    public void setTime(String time) {
+        this.timeSlot = time;
+    }
 }

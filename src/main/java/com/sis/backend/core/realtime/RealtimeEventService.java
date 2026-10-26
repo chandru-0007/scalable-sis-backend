@@ -108,6 +108,10 @@ public class RealtimeEventService {
                         .data(data));
             } catch (Exception e) {
                 deadEmitters.add(emitter);
+                try {
+                    emitter.complete();
+                } catch (Exception ignored) {
+                }
             }
         }
 

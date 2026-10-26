@@ -18,9 +18,30 @@ import java.util.Map;
 public class FacultyController {
 
     private final FacultyService facultyService;
+    private final com.sis.backend.service.EnrollmentService enrollmentService;
 
-    public FacultyController(FacultyService facultyService) {
+    public FacultyController(FacultyService facultyService,
+                             com.sis.backend.service.EnrollmentService enrollmentService) {
         this.facultyService = facultyService;
+        this.enrollmentService = enrollmentService;
+    }
+
+    /**
+     * Get Timetable for Faculty Teaching Schedule.
+     * GET /api/faculty/timetable?facultyId=FAC001
+     */
+    @GetMapping("/timetable")
+    public ResponseEntity<Map<String, Object>> getFacultyTimetable(
+            @RequestParam(required = false) String facultyId,
+            @RequestParam(required = false) String facultyName) {
+        String identifier = (facultyId != null && !facultyId.isBlank()) ? facultyId : "FAC001";
+        List<com.sis.backend.model.TimetableEntry> timetable = enrollmentService.getFacultyTimetable(identifier, facultyName);
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("facultyId", identifier);
+        response.put("slotsCount", timetable.size());
+        response.put("timetable", timetable);
+        return ResponseEntity.ok(response);
     }
 
     /**
