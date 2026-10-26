@@ -3,6 +3,7 @@ package com.sis.backend.controller;
 import com.sis.backend.model.AcademicNotice;
 import com.sis.backend.model.Course;
 import com.sis.backend.model.Enrollment;
+import com.sis.backend.model.TimetableEntry;
 import com.sis.backend.service.FacultyService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -143,5 +144,28 @@ public class FacultyController {
 
         AcademicNotice notice = facultyService.postCourseAnnouncement(courseCode, title, content, author);
         return ResponseEntity.status(HttpStatus.CREATED).body(notice);
+    }
+
+    /**
+     * Get teaching schedule/timetable for a faculty member.
+     * GET /api/faculty/timetable?facultyId=FAC001
+     * GET /api/faculty/timetable?facultyName=Ramanathan
+     */
+    @GetMapping("/timetable")
+    public ResponseEntity<Map<String, Object>> getFacultyTimetable(
+            @RequestParam(required = false) String facultyId,
+            @RequestParam(required = false) String facultyName,
+            @RequestParam(required = false) String department) {
+        long start = System.currentTimeMillis();
+        List<TimetableEntry> timetable = facultyService.getFacultyTimetable(facultyId, facultyName, department);
+        long duration = System.currentTimeMillis() - start;
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("facultyId", facultyId);
+        response.put("slotsCount", timetable.size());
+        response.put("responseTimeMs", duration);
+        response.put("timetable", timetable);
+        return ResponseEntity.ok(response);
     }
 }

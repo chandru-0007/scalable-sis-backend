@@ -6,6 +6,7 @@ import com.sis.backend.model.AcademicNotice;
 import com.sis.backend.model.Course;
 import com.sis.backend.model.Enrollment;
 import com.sis.backend.model.Student;
+import com.sis.backend.model.TimetableEntry;
 import com.sis.backend.repository.CourseRepository;
 import com.sis.backend.repository.EnrollmentRepository;
 import com.sis.backend.repository.NoticeRepository;
@@ -361,5 +362,37 @@ public class FacultyService {
         AcademicNotice saved = noticeRepository.save(notice);
         keyValueCacheService.evict("cache:notices:all");
         return saved;
+    }
+
+    /**
+     * Compute teaching timetable/schedule for a faculty member from their assigned courses.
+     */
+    public List<TimetableEntry> getFacultyTimetable(String facultyId, String facultyName, String department) {
+        List<Course> courses = getCoursesForFaculty(facultyName, facultyId, department);
+        List<TimetableEntry> timetable = new ArrayList<>();
+        for (Course c : courses) {
+            if (c.getSchedule() != null && !c.getSchedule().isBlank()) {
+                String[] slots = c.getSchedule().split(",\\s*");
+                for (String slot : slots) {
+                    String trimmed = slot.trim();
+                    if (trimmed.isEmpty()) continue;
+                    String[] parts = trimmed.split("\\s+", 2);
+                    String rawDay = parts.length > 0 ? parts[0].trim() : "Mon";
+                    String time = parts.length > 1 ? parts[1].trim() : "09:00-10:30";
+
+                    if (rawDay.contains("/")) {
+                        String[] subDays = rawDay.split("/");
+                        for (String sd : subDays) {
+                            if (!sd.isBlank()) {
+                                timetable.add(new TimetableEntry(c.getCode(), c.getTitle(), sd.trim(), time, c.getRoom(), c.getInstructor()));
+                            }
+                        }
+                    } else {
+                        timetable.add(new TimetableEntry(c.getCode(), c.getTitle(), rawDay, time, c.getRoom(), c.getInstructor()));
+                    }
+                }
+            }
+        }
+        return timetable;
     }
 }

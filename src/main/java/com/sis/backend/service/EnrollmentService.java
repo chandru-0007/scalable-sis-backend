@@ -207,7 +207,10 @@ public class EnrollmentService {
         String cachedJson = keyValueCacheService.get(cacheKey);
         if (cachedJson != null) {
             try {
-                return objectMapper.readValue(cachedJson, new TypeReference<List<TimetableEntry>>() {});
+                List<TimetableEntry> cached = objectMapper.readValue(cachedJson, new TypeReference<List<TimetableEntry>>() {});
+                if (!cached.isEmpty()) {
+                    return cached;
+                }
             } catch (Exception ignored) {
             }
         }
@@ -228,6 +231,65 @@ public class EnrollmentService {
                         String day = parts.length > 0 ? parts[0] : "Mon";
                         String time = parts.length > 1 ? parts[1] : "09:00-10:30";
                         timetable.add(new TimetableEntry(c.getCode(), c.getTitle(), day, time, c.getRoom(), c.getInstructor()));
+                    }
+                }
+            }
+        }
+
+        // 2b. If student enrollments are empty, check if this ID belongs to a Faculty member teaching courses
+        if (timetable.isEmpty()) {
+            Optional<Student> userOpt = resolveStudent(studentId);
+            String targetRoll = userOpt.map(Student::getRollNumber).orElse(studentId);
+            String targetName = userOpt.map(Student::getName).orElse(null);
+            
+            String coreKeyword = null;
+            if (targetName != null) {
+                String[] tokens = targetName.split("\\s+");
+                for (int i = tokens.length - 1; i >= 0; i--) {
+                    String clean = tokens[i].replaceAll("[^a-zA-Z]", "");
+                    if (clean.length() >= 3 && !clean.equalsIgnoreCase("Dr") && !clean.equalsIgnoreCase("Prof")) {
+                        coreKeyword = clean.toLowerCase();
+                        break;
+                    }
+                }
+            }
+            final String fCore = coreKeyword;
+            final String fName = targetName != null ? targetName.toLowerCase() : null;
+
+            List<Course> facultyCourses = courseRepository.findAll().stream().filter(c -> {
+                if (c.getFacultyId() != null && !c.getFacultyId().isBlank()) {
+                    if (targetRoll != null && targetRoll.equalsIgnoreCase(c.getFacultyId())) return true;
+                    if (studentId != null && studentId.equalsIgnoreCase(c.getFacultyId())) return true;
+                    if (canonicalStudentId != null && canonicalStudentId.equalsIgnoreCase(c.getFacultyId())) return true;
+                }
+                if (c.getInstructor() != null && !c.getInstructor().isBlank()) {
+                    String instLower = c.getInstructor().toLowerCase();
+                    if (fName != null && (instLower.contains(fName) || fName.contains(instLower))) return true;
+                    if (fCore != null && instLower.contains(fCore)) return true;
+                }
+                return false;
+            }).toList();
+
+            for (Course c : facultyCourses) {
+                if (c.getSchedule() != null && !c.getSchedule().isBlank()) {
+                    String[] slots = c.getSchedule().split(",\\s*");
+                    for (String slot : slots) {
+                        String trimmed = slot.trim();
+                        if (trimmed.isEmpty()) continue;
+                        String[] parts = trimmed.split("\\s+", 2);
+                        String rawDay = parts.length > 0 ? parts[0].trim() : "Mon";
+                        String time = parts.length > 1 ? parts[1].trim() : "09:00-10:30";
+
+                        if (rawDay.contains("/")) {
+                            String[] subDays = rawDay.split("/");
+                            for (String sd : subDays) {
+                                if (!sd.isBlank()) {
+                                    timetable.add(new TimetableEntry(c.getCode(), c.getTitle(), sd.trim(), time, c.getRoom(), c.getInstructor()));
+                                }
+                            }
+                        } else {
+                            timetable.add(new TimetableEntry(c.getCode(), c.getTitle(), rawDay, time, c.getRoom(), c.getInstructor()));
+                        }
                     }
                 }
             }
