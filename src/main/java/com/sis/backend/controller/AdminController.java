@@ -31,6 +31,17 @@ public class AdminController {
     }
 
     /**
+     * Admin onboards a new user (Student or Faculty) with auto-generated credentials sent via email.
+     * POST /api/admin/users
+     */
+    @PostMapping("/users")
+    public ResponseEntity<Map<String, Object>> addUser(
+            @RequestBody com.sis.backend.model.RegisterRequest request) {
+        Map<String, Object> result = adminService.addUser(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(result);
+    }
+
+    /**
      * Admin/Registrar onboards a new faculty member.
      * POST /api/admin/faculty
      */

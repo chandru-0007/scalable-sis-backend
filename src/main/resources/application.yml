@@ -34,3 +34,18 @@ management:
 # ─── Spring Security Default Credentials ───────────────────────────
 spring.security.user.name: ${SECURITY_USER:admin}
 spring.security.user.password: ${SECURITY_PASSWORD:admin}
+
+# ─── Email Dispatch Providers (Brevo & Resend) ─────────────────────
+brevo:
+  api:
+    key: ${BREVO_API_KEY:}
+  sender:
+    email: ${BREVO_SENDER_EMAIL:s.chandru0000000@gmail.com}
+    name: ${BREVO_SENDER_NAME:SIS Academic Portal}
+
+resend:
+  api:
+    key: ${RESEND_API_KEY:}
+  from:
+    email: ${RESEND_FROM_EMAIL:SIS Portal <onboarding@resend.dev>}
+

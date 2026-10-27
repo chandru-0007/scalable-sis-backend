@@ -32,6 +32,7 @@ public class AdminService {
     private final ConsistentHashRing consistentHashRing;
     private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private final com.sis.backend.core.realtime.RealtimeEventService realtimeEventService;
+    private final BrevoEmailService brevoEmailService;
 
     public AdminService(CourseRepository courseRepository,
                         EnrollmentRepository enrollmentRepository,
@@ -43,7 +44,8 @@ public class AdminService {
                         UrlShortenerService urlShortenerService,
                         ConsistentHashRing consistentHashRing,
                         org.springframework.security.crypto.password.PasswordEncoder passwordEncoder,
-                        com.sis.backend.core.realtime.RealtimeEventService realtimeEventService) {
+                        com.sis.backend.core.realtime.RealtimeEventService realtimeEventService,
+                        BrevoEmailService brevoEmailService) {
         this.courseRepository = courseRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.studentRepository = studentRepository;
@@ -55,6 +57,80 @@ public class AdminService {
         this.consistentHashRing = consistentHashRing;
         this.passwordEncoder = passwordEncoder;
         this.realtimeEventService = realtimeEventService;
+        this.brevoEmailService = brevoEmailService;
+    }
+
+    /**
+     * Admin onboards a new user (Student or Faculty) with an auto-generated random password
+     * and dispatches their credentials to their email via Resend API.
+     */
+    public Map<String, Object> addUser(com.sis.backend.model.RegisterRequest request) {
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Email is required.");
+        }
+        if (request.getName() == null || request.getName().isBlank()) {
+            throw new IllegalArgumentException("Name is required.");
+        }
+        if (request.getRollNumber() == null || request.getRollNumber().isBlank()) {
+            throw new IllegalArgumentException("Roll Number or Staff ID is required.");
+        }
+
+        String email = request.getEmail().trim().toLowerCase();
+        if (studentRepository.existsByEmail(email)) {
+            throw new IllegalArgumentException("User with email " + email + " already exists.");
+        }
+        if (studentRepository.existsByRollNumber(request.getRollNumber().trim())) {
+            throw new IllegalArgumentException("User with ID/Roll Number " + request.getRollNumber() + " already exists.");
+        }
+
+        String role = (request.getRole() != null && !request.getRole().isBlank())
+                ? request.getRole().trim().toUpperCase() : "STUDENT";
+
+        // Generate random secure password (or use provided if explicitly provided)
+        String tempPassword = (request.getPassword() != null && !request.getPassword().isBlank())
+                ? request.getPassword().trim()
+                : generateRandomPassword();
+
+        String userId = snowflakeIdGenerator.nextIdStr();
+        String targetShard = consistentHashRing.getShard(userId);
+        String passHash = passwordEncoder.encode(tempPassword);
+
+        Student user = new Student(
+                userId,
+                request.getRollNumber().trim(),
+                request.getName().trim(),
+                email,
+                passHash,
+                request.getDepartment() != null ? request.getDepartment().trim() : "CSE",
+                "STUDENT".equalsIgnoreCase(role) ? (request.getSemester() > 0 ? request.getSemester() : 1) : 0,
+                role,
+                targetShard,
+                System.currentTimeMillis()
+        );
+
+        Student saved = studentRepository.save(user);
+
+        // Dispatch credentials via Brevo API
+        boolean emailSent = brevoEmailService.sendCredentialsEmail(email, saved.getName(), saved.getRollNumber(), role, tempPassword);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("message", "User created successfully. " + (emailSent ? "Credentials sent to " + email : "Email delivery queued/simulated."));
+        response.put("user", saved);
+        response.put("temporaryPassword", tempPassword);
+        response.put("emailDispatched", emailSent);
+        return response;
+    }
+
+    private String generateRandomPassword() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+        StringBuilder sb = new StringBuilder("Sis#");
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        for (int i = 0; i < 6; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        sb.append("!");
+        return sb.toString();
     }
 
     /**
@@ -69,9 +145,12 @@ public class AdminService {
             throw new IllegalArgumentException("Faculty with ID " + request.getRollNumber() + " already exists.");
         }
 
+        String tempPassword = (request.getPassword() != null && !request.getPassword().isBlank())
+                ? request.getPassword().trim() : generateRandomPassword();
+
         String facultyId = snowflakeIdGenerator.nextIdStr();
         String targetShard = consistentHashRing.getShard(facultyId);
-        String passHash = passwordEncoder.encode(request.getPassword() != null ? request.getPassword() : "Faculty@123");
+        String passHash = passwordEncoder.encode(tempPassword);
 
         Student faculty = new Student(
                 facultyId,
@@ -86,7 +165,9 @@ public class AdminService {
                 System.currentTimeMillis()
         );
 
-        return studentRepository.save(faculty);
+        Student saved = studentRepository.save(faculty);
+        brevoEmailService.sendCredentialsEmail(email, saved.getName(), saved.getRollNumber(), "FACULTY", tempPassword);
+        return saved;
     }
 
     /**

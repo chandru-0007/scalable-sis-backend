@@ -29,6 +29,7 @@ public class AuthController {
     private final AuthSessionService authSessionService;
     private final PasswordEncoder passwordEncoder;
     private final com.sis.backend.core.sharding.MongoShardRouter mongoShardRouter;
+    private final com.sis.backend.service.BrevoEmailService brevoEmailService;
 
     public AuthController(StudentRepository studentRepository,
                           SnowflakeIdGenerator snowflakeIdGenerator,
@@ -36,7 +37,8 @@ public class AuthController {
                           RateLimiterService rateLimiterService,
                           AuthSessionService authSessionService,
                           PasswordEncoder passwordEncoder,
-                          com.sis.backend.core.sharding.MongoShardRouter mongoShardRouter) {
+                          com.sis.backend.core.sharding.MongoShardRouter mongoShardRouter,
+                          com.sis.backend.service.BrevoEmailService brevoEmailService) {
         this.studentRepository = studentRepository;
         this.snowflakeIdGenerator = snowflakeIdGenerator;
         this.consistentHashRing = consistentHashRing;
@@ -44,6 +46,7 @@ public class AuthController {
         this.authSessionService = authSessionService;
         this.passwordEncoder = passwordEncoder;
         this.mongoShardRouter = mongoShardRouter;
+        this.brevoEmailService = brevoEmailService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -300,5 +303,170 @@ public class AuthController {
         response.put("status", "SUCCESS");
         response.put("message", "Logged out successfully");
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Send OTP for Password Reset via Resend API and Redis (10 min TTL).
+     * POST /api/auth/forgot-password/send-otp
+     */
+    @PostMapping("/forgot-password/send-otp")
+    public ResponseEntity<Map<String, Object>> sendForgotPasswordOtp(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "Email or ID is required."));
+        }
+        String identifier = email.trim();
+
+        // 1. Fetch user by email or rollNumber
+        Optional<Student> studentOpt = mongoShardRouter.findStudent(identifier);
+        if (studentOpt.isEmpty()) {
+            studentOpt = studentRepository.findByEmail(identifier.toLowerCase());
+            if (studentOpt.isEmpty()) {
+                studentOpt = studentRepository.findByRollNumber(identifier);
+            }
+        }
+        if (studentOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("status", "ERROR", "message", "No account registered with this email or ID."));
+        }
+
+        Student student = studentOpt.get();
+
+        // 2. Rate limit OTP requests (Max 3 requests / 5 minutes)
+        boolean allowed = rateLimiterService.tryAcquire("otp:" + student.getEmail().toLowerCase(), 3, 300);
+        if (!allowed) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(Map.of("status", "RATE_LIMITED", "message", "Too many OTP requests. Please wait a few minutes before trying again."));
+        }
+
+        // 3. Generate 6-digit OTP
+        String otp = String.format("%06d", new java.security.SecureRandom().nextInt(1_000_000));
+
+        // 4. Store in Redis with 10-minute TTL
+        String redisKey = "otp:forgot:" + student.getEmail().toLowerCase();
+        authSessionService.storeOtp(redisKey, otp, java.time.Duration.ofMinutes(10));
+
+        // 5. Send via Brevo Email Service
+        boolean emailSent = brevoEmailService.sendOtpEmail(student.getEmail(), student.getName(), otp);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "SUCCESS");
+        response.put("message", "Verification code sent to " + student.getEmail());
+        response.put("email", student.getEmail());
+        response.put("emailDispatched", emailSent);
+        response.put("demoOtp", otp);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Reset Password using OTP.
+     * POST /api/auth/forgot-password/reset
+     */
+    @PostMapping("/forgot-password/reset")
+    public ResponseEntity<Map<String, Object>> resetPassword(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        String otp = body.get("otp");
+        String newPassword = body.get("newPassword");
+
+        if (email == null || otp == null || newPassword == null || newPassword.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "Email, OTP, and new password are required."));
+        }
+
+        String identifier = email.trim();
+        Optional<Student> studentOpt = mongoShardRouter.findStudent(identifier);
+        if (studentOpt.isEmpty()) {
+            studentOpt = studentRepository.findByEmail(identifier.toLowerCase());
+            if (studentOpt.isEmpty()) {
+                studentOpt = studentRepository.findByRollNumber(identifier);
+            }
+        }
+        if (studentOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status", "ERROR", "message", "User not found."));
+        }
+
+        Student student = studentOpt.get();
+        String redisKey = "otp:forgot:" + student.getEmail().toLowerCase();
+
+        String cachedOtp = authSessionService.getOtp(redisKey);
+        if (cachedOtp == null) {
+            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "OTP has expired or was not requested. Please request a new code."));
+        }
+
+        if (!cachedOtp.equals(otp.trim())) {
+            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "Invalid verification code. Please check and try again."));
+        }
+
+        // Update password hash
+        student.setPasswordHash(passwordEncoder.encode(newPassword.trim()));
+        studentRepository.save(student);
+
+        // Invalidate OTP in Redis
+        authSessionService.deleteOtp(redisKey);
+
+        return ResponseEntity.ok(Map.of(
+                "status", "SUCCESS",
+                "message", "Password has been reset successfully. Please log in with your new password."
+        ));
+    }
+
+    /**
+     * Change Password when logged in.
+     * POST /api/auth/change-password
+     */
+    @PostMapping("/change-password")
+    public ResponseEntity<Map<String, Object>> changePassword(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestHeader(value = "X-Session-Token", required = false) String sessionHeader,
+            @RequestBody Map<String, String> body) {
+
+        String token = sessionHeader;
+        if (token == null && authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7).trim();
+        }
+        if (token == null || token.isBlank()) {
+            token = body.get("token");
+        }
+
+        String identifier = body.get("email");
+        if (identifier == null || identifier.isBlank()) {
+            identifier = body.get("rollNumber");
+        }
+
+        Map<String, String> session = token != null ? authSessionService.getSession(token) : null;
+        String studentId = session != null ? session.get("studentId") : null;
+
+        Optional<Student> studentOpt = Optional.empty();
+        if (studentId != null) {
+            studentOpt = studentRepository.findById(studentId);
+        }
+        if (studentOpt.isEmpty() && identifier != null) {
+            studentOpt = studentRepository.findByEmail(identifier.trim().toLowerCase());
+            if (studentOpt.isEmpty()) {
+                studentOpt = studentRepository.findByRollNumber(identifier.trim());
+            }
+        }
+
+        if (studentOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("status", "ERROR", "message", "User session expired or not found. Please log in."));
+        }
+
+        String oldPassword = body.get("oldPassword");
+        String newPassword = body.get("newPassword");
+
+        if (oldPassword == null || newPassword == null || newPassword.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "Current password and new password are required."));
+        }
+
+        Student student = studentOpt.get();
+        if (!passwordEncoder.matches(oldPassword, student.getPasswordHash())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("status", "ERROR", "message", "Current password does not match our records."));
+        }
+
+        student.setPasswordHash(passwordEncoder.encode(newPassword.trim()));
+        studentRepository.save(student);
+
+        return ResponseEntity.ok(Map.of("status", "SUCCESS", "message", "Password changed successfully."));
     }
 }

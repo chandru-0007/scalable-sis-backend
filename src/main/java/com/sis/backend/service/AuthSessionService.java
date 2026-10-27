@@ -105,4 +105,31 @@ public class AuthSessionService {
         }
         return removed;
     }
+
+    private final ConcurrentHashMap<String, String> memoryOtps = new ConcurrentHashMap<>();
+
+    public void storeOtp(String key, String otp, Duration ttl) {
+        try {
+            redisTemplate.opsForValue().set(key, otp, ttl);
+        } catch (Exception e) {
+            memoryOtps.put(key, otp);
+        }
+    }
+
+    public String getOtp(String key) {
+        try {
+            String val = redisTemplate.opsForValue().get(key);
+            if (val != null) return val;
+        } catch (Exception ignored) {
+        }
+        return memoryOtps.get(key);
+    }
+
+    public void deleteOtp(String key) {
+        try {
+            redisTemplate.delete(key);
+        } catch (Exception ignored) {
+        }
+        memoryOtps.remove(key);
+    }
 }
