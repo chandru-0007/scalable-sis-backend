@@ -54,4 +54,18 @@ public class UrlShortenerController {
         }
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(longUrl)).build();
     }
+
+    /**
+     * Clear all existing short URLs from Redis.
+     * DELETE /api/url/clear
+     */
+    @DeleteMapping("/api/url/clear")
+    public ResponseEntity<Map<String, Object>> clearShortUrls() {
+        long deleted = urlShortenerService.clearAllShortUrls();
+        return ResponseEntity.ok(Map.of(
+                "status", "SUCCESS",
+                "message", "Successfully cleared short URLs from Redis",
+                "deletedKeys", deleted
+        ));
+    }
 }

@@ -4,6 +4,7 @@ import com.sis.backend.core.id.SnowflakeIdGenerator;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -17,6 +18,9 @@ public class UrlShortenerService {
     private static final String BASE62_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private static final String SHORT_TO_LONG_PREFIX = "url:code:";
     private static final String LONG_TO_SHORT_PREFIX = "url:target:";
+
+    // Short URL expiration: 1.5 months (45 days)
+    private static final Duration URL_TTL = Duration.ofDays(45);
 
     private final SnowflakeIdGenerator snowflakeIdGenerator;
     private final StringRedisTemplate redisTemplate;
@@ -55,10 +59,10 @@ public class UrlShortenerService {
         // 3. Encode to Base62 string
         String code = encodeBase62(numericId);
 
-        // 4. Save bidirectional mapping in Key-Value store
+        // 4. Save bidirectional mapping in Key-Value store with 1.5 months (45 days) TTL
         try {
-            redisTemplate.opsForValue().set(SHORT_TO_LONG_PREFIX + code, trimmed);
-            redisTemplate.opsForValue().set(LONG_TO_SHORT_PREFIX + trimmed, code);
+            redisTemplate.opsForValue().set(SHORT_TO_LONG_PREFIX + code, trimmed, URL_TTL);
+            redisTemplate.opsForValue().set(LONG_TO_SHORT_PREFIX + trimmed, code, URL_TTL);
         } catch (Exception e) {
             memoryUrlMap.put(code, trimmed);
             memoryUrlMap.put(trimmed, code);
@@ -90,6 +94,23 @@ public class UrlShortenerService {
             num /= 62;
         }
         return sb.reverse().toString();
+    }
+
+    /**
+     * Clear all short URL keys in Redis.
+     */
+    public long clearAllShortUrls() {
+        long count = 0;
+        try {
+            java.util.Set<String> keys = redisTemplate.keys("url:*");
+            if (keys != null && !keys.isEmpty()) {
+                Long deleted = redisTemplate.delete(keys);
+                count = (deleted != null) ? deleted : 0;
+            }
+        } catch (Exception ignored) {
+        }
+        memoryUrlMap.clear();
+        return count;
     }
 
     public long getTotalShortenedCount() {
