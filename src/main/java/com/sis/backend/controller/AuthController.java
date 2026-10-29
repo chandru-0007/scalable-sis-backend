@@ -354,7 +354,6 @@ public class AuthController {
         response.put("message", "Verification code sent to " + student.getEmail());
         response.put("email", student.getEmail());
         response.put("emailDispatched", emailSent);
-        response.put("demoOtp", otp);
         return ResponseEntity.ok(response);
     }
 
