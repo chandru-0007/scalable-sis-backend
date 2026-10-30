@@ -203,6 +203,15 @@ public class AssignmentService {
             assignments = assignmentRepository.findByCourseCodeIn(enrolledCodes);
         }
 
+        // Batch fetch all student submissions in a single indexed query (resolves N+1 query latency)
+        List<AssignmentSubmission> userSubmissions = submissionRepository.findByStudentId(student.getId());
+        Map<String, AssignmentSubmission> subMap = new HashMap<>();
+        for (AssignmentSubmission s : userSubmissions) {
+            if (s.getAssignmentId() != null) {
+                subMap.put(s.getAssignmentId(), s);
+            }
+        }
+
         List<Map<String, Object>> result = new ArrayList<>();
         for (Assignment a : assignments) {
             Map<String, Object> map = new HashMap<>();
@@ -217,10 +226,9 @@ public class AssignmentService {
             map.put("createdAt", a.getCreatedAt());
             map.put("status", a.getStatus());
 
-            // Check if student has submitted
-            Optional<AssignmentSubmission> subOpt = submissionRepository.findByAssignmentIdAndStudentId(a.getId(), student.getId());
-            if (subOpt.isPresent()) {
-                AssignmentSubmission sub = subOpt.get();
+            // Check submission from pre-fetched in-memory map
+            AssignmentSubmission sub = subMap.get(a.getId());
+            if (sub != null) {
                 map.put("isSubmitted", true);
                 map.put("submissionId", sub.getId());
                 map.put("submissionStatus", sub.getStatus()); // "SUBMITTED" or "GRADED"
@@ -358,13 +366,25 @@ public class AssignmentService {
         return false;
     }
 
+    private final Map<String, Student> studentFastCache = new java.util.concurrent.ConcurrentHashMap<>();
+
     private Optional<Student> resolveStudent(String identifier) {
         if (identifier == null || identifier.isBlank()) return Optional.empty();
         String clean = identifier.trim();
+        Student cached = studentFastCache.get(clean);
+        if (cached != null) return Optional.of(cached);
+
         Optional<Student> opt = studentRepository.findById(clean);
-        if (opt.isPresent()) return opt;
-        opt = studentRepository.findByRollNumber(clean);
-        if (opt.isPresent()) return opt;
-        return studentRepository.findByEmail(clean.toLowerCase());
+        if (opt.isEmpty()) opt = studentRepository.findByRollNumber(clean);
+        if (opt.isEmpty()) opt = studentRepository.findByEmail(clean.toLowerCase());
+
+        if (opt.isPresent()) {
+            Student s = opt.get();
+            studentFastCache.put(clean, s);
+            if (s.getId() != null) studentFastCache.put(s.getId(), s);
+            if (s.getRollNumber() != null) studentFastCache.put(s.getRollNumber(), s);
+            if (s.getEmail() != null) studentFastCache.put(s.getEmail().toLowerCase(), s);
+        }
+        return opt;
     }
 }

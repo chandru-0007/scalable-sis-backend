@@ -73,8 +73,19 @@ public class WebCrawlerService {
      * Get active upcoming notices and internships directly from database/cache without triggering external HTTP scrape.
      * Sub-millisecond latency.
      */
+    private volatile List<AcademicNotice> activeNoticesCache = null;
+    private volatile long lastNoticesCacheTime = 0;
+
     public List<AcademicNotice> getActiveNotices(String department) {
-        List<AcademicNotice> allNotices = noticeRepository.findAllByOrderByScrapedAtDesc();
+        long now = System.currentTimeMillis();
+        List<AcademicNotice> allNotices;
+        if (activeNoticesCache != null && (now - lastNoticesCacheTime < 300000)) {
+            allNotices = activeNoticesCache;
+        } else {
+            allNotices = noticeRepository.findAllByOrderByScrapedAtDesc();
+            activeNoticesCache = allNotices;
+            lastNoticesCacheTime = now;
+        }
         return allNotices.stream()
                 .filter(n -> !n.isExpired())
                 .filter(n -> {

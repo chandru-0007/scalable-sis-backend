@@ -55,17 +55,27 @@ public class EnrollmentService {
         this.mongoShardRouter = mongoShardRouter;
     }
 
+    private final Map<String, Student> studentFastCache = new java.util.concurrent.ConcurrentHashMap<>();
+
     public Optional<Student> resolveStudent(String identifier) {
         if (identifier == null || identifier.isBlank()) return Optional.empty();
         String clean = identifier.trim();
+        Student cached = studentFastCache.get(clean);
+        if (cached != null) return Optional.of(cached);
+
         Optional<Student> opt = studentRepository.findById(clean);
-        if (opt.isPresent()) return opt;
-        opt = studentRepository.findByRollNumber(clean);
-        if (opt.isPresent()) return opt;
-        opt = studentRepository.findByEmail(clean.toLowerCase());
-        if (opt.isPresent()) return opt;
-        if (mongoShardRouter != null) {
+        if (opt.isEmpty()) opt = studentRepository.findByRollNumber(clean);
+        if (opt.isEmpty()) opt = studentRepository.findByEmail(clean.toLowerCase());
+        if (opt.isEmpty() && mongoShardRouter != null) {
             opt = mongoShardRouter.findStudent(clean);
+        }
+
+        if (opt.isPresent()) {
+            Student s = opt.get();
+            studentFastCache.put(clean, s);
+            if (s.getId() != null) studentFastCache.put(s.getId(), s);
+            if (s.getRollNumber() != null) studentFastCache.put(s.getRollNumber(), s);
+            if (s.getEmail() != null) studentFastCache.put(s.getEmail().toLowerCase(), s);
         }
         return opt;
     }
