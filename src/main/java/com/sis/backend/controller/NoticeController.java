@@ -22,12 +22,16 @@ public class NoticeController {
 
     /**
      * Get Academic Circulars & Real Engineering Internships (Web Crawler Feed).
-     * GET /api/notices?department=CSE
+     * GET /api/notices?department=CSE&limit=25
      */
     @GetMapping
     public ResponseEntity<Map<String, Object>> getNotices(
-            @RequestParam(required = false) String department) {
+            @RequestParam(required = false) String department,
+            @RequestParam(required = false, defaultValue = "25") int limit) {
         List<AcademicNotice> notices = webCrawlerService.getActiveNotices(department);
+        if (limit > 0 && notices.size() > limit) {
+            notices = notices.subList(0, limit);
+        }
         Map<String, Object> response = new HashMap<>();
         response.put("status", "SUCCESS");
         response.put("count", notices.size());
